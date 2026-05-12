@@ -1,0 +1,42 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 300000, // 5 min for video generation
+});
+
+// Add response interceptor for error handling
+api.interceptors.response.use(
+  response => response.data,
+  error => {
+    const msg = error.response?.data?.error || error.message || 'Network error';
+    return Promise.reject(new Error(msg));
+  }
+);
+
+// CHATS
+export const fetchChats = () => api.get('/chats');
+export const createChat = (task_type, model_id) => api.post('/chats', { task_type, model_id });
+export const getChatMessages = (chatId) => api.get(`/chats/${chatId}/messages`);
+export const deleteChat = (chatId) => api.delete(`/chats/${chatId}`);
+export const updateChatTitle = (chatId, title) => api.patch(`/chats/${chatId}`, { title });
+
+// MESSAGES
+export const sendMessage = (chatId, content, model_id) =>
+  api.post(`/chats/${chatId}/messages`, { content, model_id });
+
+// VIDEO POLLING
+export const pollJobStatus = (messageId) => api.get(`/jobs/${messageId}/status`);
+
+// MODELS
+export const fetchModels = () => api.get('/models');
+
+// Health
+export const checkHealth = () => api.get('/health');
+
+// Build full media URL
+export const getMediaUrl = (relativePath) => {
+  if (!relativePath) return '';
+  if (relativePath.startsWith('http')) return relativePath;
+  return relativePath; // Vite proxy handles /uploads/* → backend
+};

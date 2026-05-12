@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f17;
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+  }
+}
+
+@layer components {
+  .prose-dark {
+    color: #e2e8f0;
+  }
+  .prose-dark h1, .prose-dark h2, .prose-dark h3 {
+    color: #f1f5f9;
+    font-weight: 700;
+    margin: 1rem 0 0.5rem;
+  }
+  .prose-dark p {
+    margin: 0.5rem 0;
+    line-height: 1.7;
+  }
+  .prose-dark code {
+    background: #1e293b;
+    color: #a5f3fc;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-family: 'Courier New', monospace;
+  }
+  .prose-dark pre {
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+  }
+  .prose-dark pre code {
+    background: none;
+    padding: 0;
+  }
+  .prose-dark ul, .prose-dark ol {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+  }
+  .prose-dark li {
+    margin: 0.25rem 0;
+  }
+  .prose-dark blockquote {
+    border-left: 3px solid #6366f1;
+    padding-left: 1rem;
+    color: #94a3b8;
+    margin: 0.75rem 0;
+  }
+  .prose-dark a {
+    color: #818cf8;
+    text-decoration: underline;
+  }
+  .prose-dark strong {
+    color: #f1f5f9;
+    font-weight: 600;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, #1e293b 25%, #2d3748 50%, #1e293b 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .typing-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #6366f1;
+    border-radius: 50%;
+    animation: typingBounce 1.4s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-10px); opacity: 1; }
+  }
+
+  .glass {
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+}
