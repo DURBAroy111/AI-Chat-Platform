@@ -1,7 +1,7 @@
 export const MODELS = {
   text: [
     {
-      id: 'fal-ai/any-llm',
+      id: 'fal-ai/any-llm',             // unique id sent to backend
       name: 'Claude Haiku',
       provider: 'Anthropic',
       description: 'Fast replies, Q&A, summaries',
@@ -9,11 +9,9 @@ export const MODELS = {
       cost: 'Low',
       badge: 'Fast',
       badgeColor: 'green',
-      // fal-ai/any-llm expects a "model" param
-      falModel: 'anthropic/claude-haiku-4-5',
     },
     {
-      id: 'fal-ai/any-llm',
+      id: 'fal-ai/any-llm::sonnet',     // unique id sent to backend
       name: 'Claude Sonnet',
       provider: 'Anthropic',
       description: 'Long-form writing & analysis',
@@ -21,11 +19,9 @@ export const MODELS = {
       cost: 'Medium',
       badge: 'Smart',
       badgeColor: 'blue',
-      falModel: 'anthropic/claude-sonnet-4-5',
-      uniqueId: 'fal-ai/any-llm::sonnet',
     },
     {
-      id: 'fal-ai/any-llm',
+      id: 'fal-ai/any-llm::gemini',     // unique id sent to backend
       name: 'Gemini Flash',
       provider: 'Google',
       description: 'Multimodal, fast reasoning',
@@ -33,8 +29,6 @@ export const MODELS = {
       cost: 'Low',
       badge: 'Fast',
       badgeColor: 'green',
-      falModel: 'google/gemini-flash-1.5',
-      uniqueId: 'fal-ai/any-llm::gemini',
     },
   ],
   image: [
@@ -123,63 +117,31 @@ export const MODELS = {
   ],
 };
 
-// Model display name lookup (for rendering from stored model_id strings)
+// Human-readable name lookup from any stored model_id string
 export const MODEL_DISPLAY_NAMES = {
-  'fal-ai/any-llm': 'Claude Haiku',
-  'fal-ai/any-llm::sonnet': 'Claude Sonnet',
-  'fal-ai/any-llm::gemini': 'Gemini Flash',
-  'anthropic/claude-haiku-4-5': 'Claude Haiku',
-  'anthropic/claude-sonnet-4-5': 'Claude Sonnet',
-  'google/gemini-flash-1.5': 'Gemini Flash',
-  'fal-ai/claude-haiku': 'Claude Haiku',    // legacy compat
-  'fal-ai/claude-sonnet': 'Claude Sonnet',  // legacy compat
-  'fal-ai/gemini-flash': 'Gemini Flash',    // legacy compat
-  'fal-ai/flux/schnell': 'FLUX Schnell',
-  'fal-ai/flux-pro': 'FLUX Pro',
+  'fal-ai/any-llm':          'Claude Haiku',
+  'fal-ai/any-llm::sonnet':  'Claude Sonnet',
+  'fal-ai/any-llm::gemini':  'Gemini Flash',
+  // Legacy IDs still in DB from before the fix
+  'fal-ai/claude-haiku':     'Claude Haiku',
+  'fal-ai/claude-sonnet':    'Claude Sonnet',
+  'fal-ai/gemini-flash':     'Gemini Flash',
+  // Image
+  'fal-ai/flux/schnell':        'FLUX Schnell',
+  'fal-ai/flux-pro':            'FLUX Pro',
   'fal-ai/flux-pro/v1.1-ultra': 'FLUX Max',
-  'fal-ai/imagen4/preview': 'Imagen 4',
+  'fal-ai/imagen4/preview':     'Imagen 4',
+  // Video
   'fal-ai/kling-video/v1.6/standard': 'Kling Standard',
-  'fal-ai/kling-video/v1.6/pro': 'Kling Pro',
-  'fal-ai/luma-dream-machine': 'Luma Dream',
-  'fal-ai/veo3/fast': 'Veo 3 Fast',
+  'fal-ai/kling-video/v1.6/pro':      'Kling Pro',
+  'fal-ai/luma-dream-machine':         'Luma Dream',
+  'fal-ai/veo3/fast':                  'Veo 3 Fast',
 };
 
-// Map a stored model_id to a human-friendly name
 export function getModelName(modelId) {
   if (!modelId) return '';
   return MODEL_DISPLAY_NAMES[modelId] || modelId.split('/').pop();
 }
-
-// Text model config: maps model_id → { falEndpoint, falModel }
-// The "uniqueId" is used in the selector to distinguish multiple entries
-// that share the same fal endpoint.
-export const TEXT_MODEL_CONFIG = {
-  'fal-ai/any-llm': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'anthropic/claude-haiku-4-5',
-  },
-  'fal-ai/any-llm::sonnet': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'anthropic/claude-sonnet-4-5',
-  },
-  'fal-ai/any-llm::gemini': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'google/gemini-flash-1.5',
-  },
-  // Legacy IDs that might be stored in DB already
-  'fal-ai/claude-haiku': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'anthropic/claude-haiku-4-5',
-  },
-  'fal-ai/claude-sonnet': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'anthropic/claude-sonnet-4-5',
-  },
-  'fal-ai/gemini-flash': {
-    falEndpoint: 'fal-ai/any-llm',
-    falModel: 'google/gemini-flash-1.5',
-  },
-};
 
 export const TASK_TYPES = [
   {
