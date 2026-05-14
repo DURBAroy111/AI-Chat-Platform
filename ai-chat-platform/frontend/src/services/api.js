@@ -35,8 +35,12 @@ export const fetchModels = () => api.get('/models');
 export const checkHealth = () => api.get('/health');
 
 // Build full media URL
-export const getMediaUrl = (relativePath) => {
-  if (!relativePath) return '';
-  if (relativePath.startsWith('http')) return relativePath;
-  return relativePath; // Vite proxy handles /uploads/* → backend
+// Since backend now returns full fal.ai CDN URLs (https://...), just pass through.
+// Falls back gracefully if somehow a relative path is still stored from old data.
+export const getMediaUrl = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http')) return path; // fal.ai CDN URL — use directly
+  // Legacy relative path (old data in DB) — prefix with backend URL
+  const backendUrl = import.meta.env.VITE_API_URL || '';
+  return `${backendUrl}${path}`;
 };

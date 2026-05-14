@@ -1,6 +1,5 @@
 const { pool } = require('../db/database');
 const { v4: uuidv4 } = require('uuid');
-const { deleteLocalFile } = require('../services/falService');
 
 // GET /chats - list all chats
 const listChats = async (req, res) => {
@@ -56,22 +55,11 @@ const getChatMessages = async (req, res) => {
   }
 };
 
-// DELETE /chats/:id - delete chat + messages + files
+// DELETE /chats/:id - delete chat and its messages from DB
+// No local files to clean up anymore since we use fal.ai CDN URLs
 const deleteChat = async (req, res) => {
   const { id } = req.params;
   try {
-    // Get all messages with media files
-    const [messages] = await pool.execute(
-      'SELECT media_url FROM messages WHERE chat_id = ? AND media_url IS NOT NULL',
-      [id]
-    );
-
-    // Delete local files
-    messages.forEach(msg => {
-      if (msg.media_url) deleteLocalFile(msg.media_url);
-    });
-
-    // Delete from DB (cascade deletes messages)
     const [result] = await pool.execute('DELETE FROM chats WHERE id = ?', [id]);
 
     if (result.affectedRows === 0) {
