@@ -5,43 +5,56 @@ require('dotenv').config();
 fal.config({ credentials: process.env.FAL_KEY });
 
 // Map stored model_id → actual fal endpoint + inner model param
+// Model strings must match exactly what fal-ai/any-llm accepts
 function resolveTextModel(modelId) {
   const MAP = {
-    // Current IDs (these are what gets stored in DB when user creates a chat)
-    'fal-ai/any-llm':         { endpoint: 'fal-ai/any-llm', model: 'claude-haiku-4-5' },
-    'fal-ai/any-llm::sonnet': { endpoint: 'fal-ai/any-llm', model: 'claude-sonnet-4-5' },
-    'fal-ai/any-llm::gemini': { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-2.0' },
+    // Current IDs used by the frontend
+    'fal-ai/any-llm':         { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3-haiku' },
+    'fal-ai/any-llm::sonnet': { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3.5-sonnet' },
+    'fal-ai/any-llm::gemini': { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
     // Legacy IDs still in DB from before the fix
-    'fal-ai/claude-haiku':  { endpoint: 'fal-ai/any-llm', model: 'claude-haiku-4-5' },
-    'fal-ai/claude-sonnet': { endpoint: 'fal-ai/any-llm', model: 'claude-sonnet-4-5' },
-    'fal-ai/gemini-flash':  { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-2.0' },
+    'fal-ai/claude-haiku':  { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3-haiku' },
+    'fal-ai/claude-sonnet': { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3.5-sonnet' },
+    'fal-ai/gemini-flash':  { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
   };
-  const resolved = MAP[modelId] || { endpoint: 'fal-ai/any-llm', model: 'claude-haiku-4-5' };
-  console.log(`[resolveTextModel] "${modelId}" → endpoint: "${resolved.endpoint}", model: "${resolved.model}"`);
+  const resolved = MAP[modelId] || { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3-haiku' };
+  console.log(`[resolveTextModel] "${modelId}" → model: "${resolved.model}"`);
   return resolved;
 }
 
 // === TEXT GENERATION ===
+// fal-ai/any-llm uses "prompt" not "messages"
+// History is formatted into the prompt string manually
 async function generateText(modelId, prompt, history = []) {
   const { endpoint, model } = resolveTextModel(modelId);
 
-  const messages = history
-    .map(msg => ({ role: msg.role, content: msg.content || '' }))
-    .filter(m => m.content);
-  messages.push({ role: 'user', content: prompt });
+  // Build a single prompt string that includes conversation history
+  let fullPrompt = prompt;
+  if (history && history.length > 0) {
+    const historyText = history
+      .filter(m => m.content && m.content.trim())
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.trim()}`)
+      .join('\n');
+    if (historyText) {
+      fullPrompt = `${historyText}\nUser: ${prompt}`;
+    }
+  }
 
-  console.log(`[generateText] calling ${endpoint} with model=${model}, messages=${messages.length}`);
+  console.log(`[generateText] calling ${endpoint}, model=${model}, promptLength=${fullPrompt.length}`);
 
   try {
     const result = await fal.subscribe(endpoint, {
       input: {
         model,
-        messages,
+        prompt: fullPrompt,
         system: 'You are a helpful AI assistant. Provide clear, accurate, and helpful responses.',
       },
     });
 
+    // Log raw output shape once for debugging
     const output = result.data || result;
+    console.log(`[generateText] response keys: ${Object.keys(output).join(', ')}`);
+
     if (output.output) return output.output;
     if (output.text) return output.text;
     if (output.message) return output.message;
@@ -54,8 +67,7 @@ async function generateText(modelId, prompt, history = []) {
     }
     return JSON.stringify(output);
   } catch (err) {
-    // Log full error body so you can see exactly what fal.ai returns
-    console.error(`[generateText] ERROR:`, JSON.stringify(err?.body || err?.message || err, null, 2));
+    console.error(`[generateText] ERROR body:`, JSON.stringify(err?.body || err?.message || err, null, 2));
     throw err;
   }
 }
@@ -118,6 +130,7 @@ async function checkVideoStatus(modelId, requestId) {
     if (status.status === 'COMPLETED') {
       const result = await fal.queue.result(modelId, { requestId });
       const output = result.data || result;
+      // Return fal.ai CDN URL directly — no local download
       const videoUrl = output.video?.url || output.videos?.[0]?.url;
       if (!videoUrl) throw new Error('No video URL in completed result');
       console.log(`[checkVideoStatus] complete: ${videoUrl}`);
