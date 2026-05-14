@@ -38,12 +38,13 @@ const sendMessage = async (req, res) => {
       'SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ? AND role = "user"',
       [chatId]
     );
+    let chatTitle = chat.title;
     if (msgCount[0].cnt === 1) {
-      const title = content.trim().substring(0, 60);
-      await pool.execute('UPDATE chats SET title = ? WHERE id = ?', [title, chatId]);
+      chatTitle = content.trim().substring(0, 60);
+      await pool.execute('UPDATE chats SET title = ? WHERE id = ?', [chatTitle, chatId]);
     }
 
-    // Update chat updated_at
+    // Update chat updated_at and model
     await pool.execute('UPDATE chats SET updated_at = NOW(), model_id = ? WHERE id = ?', [activeModelId, chatId]);
 
     const userMessage = {
@@ -53,15 +54,19 @@ const sendMessage = async (req, res) => {
       content: content.trim(),
       media_type: chat.task_type,
       model_id: activeModelId,
+      created_at: new Date().toISOString(),
     };
 
     // === TEXT GENERATION ===
     if (chat.task_type === 'text') {
       try {
-        // Get conversation history for context
+        // Get conversation history — fixed SQL with correct parentheses
         const [history] = await pool.execute(
-          'SELECT role, content FROM messages WHERE chat_id = ? AND role != "user" OR (chat_id = ? AND role = "user" AND id != ?) ORDER BY created_at ASC LIMIT 20',
-          [chatId, chatId, userMsgId]
+          `SELECT role, content FROM messages
+           WHERE chat_id = ? AND id != ?
+           ORDER BY created_at ASC
+           LIMIT 20`,
+          [chatId, userMsgId]
         );
 
         const replyText = await generateText(activeModelId, content.trim(), history);
@@ -79,13 +84,19 @@ const sendMessage = async (req, res) => {
           content: replyText,
           media_type: 'text',
           model_id: activeModelId,
+          created_at: new Date().toISOString(),
         };
 
-        return res.json({ success: true, userMessage, assistantMessage });
+        return res.json({
+          success: true,
+          userMessage,
+          assistantMessage,
+          chatTitle,
+        });
       } catch (err) {
         console.error('Text generation error:', err);
         const errId = uuidv4();
-        const errText = `⚠️ Error generating response: ${err.message}. Please check your FAL_KEY in .env and try again.`;
+        const errText = `⚠️ Error generating response: ${err.message}`;
         await pool.execute(
           'INSERT INTO messages (id, chat_id, role, content, media_type, model_id) VALUES (?, ?, ?, ?, ?, ?)',
           [errId, chatId, 'assistant', errText, 'text', activeModelId]
@@ -93,7 +104,14 @@ const sendMessage = async (req, res) => {
         return res.json({
           success: false,
           userMessage,
-          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text' },
+          assistantMessage: {
+            id: errId,
+            role: 'assistant',
+            content: errText,
+            media_type: 'text',
+            created_at: new Date().toISOString(),
+          },
+          chatTitle,
         });
       }
     }
@@ -121,7 +139,9 @@ const sendMessage = async (req, res) => {
             media_type: 'image',
             model_id: activeModelId,
             status: 'complete',
+            created_at: new Date().toISOString(),
           },
+          chatTitle,
         });
       } catch (err) {
         console.error('Image generation error:', err);
@@ -134,7 +154,14 @@ const sendMessage = async (req, res) => {
         return res.json({
           success: false,
           userMessage,
-          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text' },
+          assistantMessage: {
+            id: errId,
+            role: 'assistant',
+            content: errText,
+            media_type: 'text',
+            created_at: new Date().toISOString(),
+          },
+          chatTitle,
         });
       }
     }
@@ -162,7 +189,9 @@ const sendMessage = async (req, res) => {
             model_id: activeModelId,
             job_id: jobId,
             status: 'processing',
+            created_at: new Date().toISOString(),
           },
+          chatTitle,
         });
       } catch (err) {
         console.error('Video submission error:', err);
@@ -175,7 +204,14 @@ const sendMessage = async (req, res) => {
         return res.json({
           success: false,
           userMessage,
-          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text' },
+          assistantMessage: {
+            id: errId,
+            role: 'assistant',
+            content: errText,
+            media_type: 'text',
+            created_at: new Date().toISOString(),
+          },
+          chatTitle,
         });
       }
     }

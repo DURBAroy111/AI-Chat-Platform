@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { pollJobStatus, getMediaUrl } from '../services/api';
+import { getModelName } from '../utils/models';
+import { ThemeContext } from '../App';
 
 function TypingIndicator() {
   return (
@@ -134,14 +136,19 @@ function VideoMessage({ message, onStatusUpdate }) {
 
 export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
   const isUser = message.role === 'user';
+  const { theme } = useContext(ThemeContext);
 
   if (isLoading) {
     return (
       <div className="flex items-start gap-3 px-4 py-2">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold flex-shrink-0 text-white">
           AI
         </div>
-        <div className="bg-[#1e1e30] border border-white/5 rounded-2xl rounded-tl-sm px-4 py-3">
+        <div className={`rounded-2xl rounded-tl-sm px-4 py-3 ${
+          theme === 'dark'
+            ? 'bg-[#1e1e30] border border-white/5'
+            : 'bg-white border border-gray-200'
+        }`}>
           <TypingIndicator />
         </div>
       </div>
@@ -152,7 +159,7 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
     <div className={`flex items-start gap-3 px-4 py-2 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
       <div className={`
-        w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0
+        w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 text-white
         ${isUser ? 'bg-indigo-600' : 'bg-gradient-to-br from-indigo-500 to-purple-600'}
       `}>
         {isUser ? 'U' : 'AI'}
@@ -164,7 +171,9 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
           rounded-2xl px-4 py-2.5
           ${isUser
             ? 'bg-indigo-600 text-white rounded-tr-sm'
-            : 'bg-[#1e1e30] border border-white/5 text-slate-200 rounded-tl-sm'
+            : theme === 'dark'
+              ? 'bg-[#1e1e30] border border-white/5 text-slate-200 rounded-tl-sm'
+              : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
           }
         `}>
           {message.media_type === 'image' && message.media_url && (
@@ -174,11 +183,17 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
             <VideoMessage message={message} onStatusUpdate={onStatusUpdate} />
           )}
           {(message.media_type === 'text' || (!message.media_url && message.content)) && (
-            <div className={isUser ? 'text-white text-sm' : 'prose-dark text-sm'}>
+            <div className={`text-sm ${isUser ? 'text-white' : theme === 'dark' ? 'text-slate-200' : 'text-gray-800'}`}>
               {isUser ? (
                 <p className="whitespace-pre-wrap">{message.content}</p>
               ) : (
-                <ReactMarkdown>{message.content || ''}</ReactMarkdown>
+                <div className={`prose prose-sm max-w-none ${
+                  theme === 'dark'
+                    ? 'prose-invert prose-p:text-slate-200 prose-headings:text-white prose-strong:text-white prose-code:text-indigo-300'
+                    : 'prose-p:text-gray-800 prose-headings:text-gray-900'
+                }`}>
+                  <ReactMarkdown>{message.content || ''}</ReactMarkdown>
+                </div>
               )}
             </div>
           )}
@@ -186,8 +201,10 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
 
         {/* Model badge for assistant */}
         {!isUser && message.model_id && (
-          <p className="text-xs text-slate-600 mt-1 px-1">
-            {message.model_id.split('/').pop()}
+          <p className={`text-xs mt-1 px-1 ${
+            theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
+          }`}>
+            {getModelName(message.model_id)}
           </p>
         )}
       </div>

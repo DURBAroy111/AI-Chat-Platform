@@ -20,12 +20,16 @@ export default function App() {
   const loadChats = useCallback(async () => {
     try {
       const data = await fetchChats();
-      setChats(data.chats || []);
+      const loadedChats = data.chats || [];
+      setChats(loadedChats);
 
       // Restore last active chat from localStorage
       const lastChatId = localStorage.getItem('lastActiveChatId');
-      if (lastChatId && data.chats?.find(c => c.id === lastChatId)) {
+      if (lastChatId && loadedChats.find(c => c.id === lastChatId)) {
         setActiveChatId(lastChatId);
+      } else if (loadedChats.length > 0 && !lastChatId) {
+        // Auto-select the most recent chat on first load
+        // (don't auto-select on refresh if no saved preference)
       }
     } catch (err) {
       console.error('Failed to load chats:', err);
@@ -69,11 +73,16 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const handleChatUpdated = (updatedChat) => {
-    setChats(prev => prev.map(c => c.id === updatedChat.id ? updatedChat : c));
-  };
+  // Called by ChatWindow after a message is sent — updates title + timestamp in sidebar
+  const handleChatUpdated = useCallback((updatedChatFields) => {
+    setChats(prev => prev.map(c =>
+      c.id === updatedChatFields.id
+        ? { ...c, ...updatedChatFields, updated_at: new Date().toISOString() }
+        : c
+    ));
+  }, []);
 
-  const activeChat = chats.find(c => c.id === activeChatId);
+  const activeChat = chats.find(c => c.id === activeChatId) || null;
 
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -84,8 +93,8 @@ export default function App() {
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <div className={`flex h-screen overflow-hidden ${
-        theme === 'dark' 
-          ? 'bg-[#0f0f17]' 
+        theme === 'dark'
+          ? 'bg-[#0f0f17]'
           : 'bg-white'
       }`}>
         {/* Mobile overlay */}

@@ -37,19 +37,38 @@ async function downloadAndSave(url, subDir, extension) {
   return relativePath;
 }
 
+// Map stored model_id → actual fal endpoint + inner model param
+// This handles legacy IDs and new IDs.
+function resolveTextModel(modelId) {
+  const MAP = {
+    // New IDs
+    'fal-ai/any-llm':          { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-haiku-4-5' },
+    'fal-ai/any-llm::sonnet':  { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-sonnet-4-5' },
+    'fal-ai/any-llm::gemini':  { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
+    // Legacy IDs stored in DB before the fix
+    'fal-ai/claude-haiku':  { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-haiku-4-5' },
+    'fal-ai/claude-sonnet': { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-sonnet-4-5' },
+    'fal-ai/gemini-flash':  { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
+  };
+  return MAP[modelId] || { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-haiku-4-5' };
+}
+
 // === TEXT GENERATION ===
 async function generateText(modelId, prompt, history = []) {
+  const { endpoint, model } = resolveTextModel(modelId);
+
   // Build messages array from history
   const messages = history.map(msg => ({
     role: msg.role,
-    content: msg.content
-  }));
+    content: msg.content || '',
+  })).filter(m => m.content); // skip empty
   messages.push({ role: 'user', content: prompt });
 
-  const result = await fal.subscribe(modelId, {
+  const result = await fal.subscribe(endpoint, {
     input: {
+      model,
       messages,
-      system: "You are a helpful AI assistant. Provide clear, accurate, and helpful responses.",
+      system: 'You are a helpful AI assistant. Provide clear, accurate, and helpful responses.',
     },
   });
 

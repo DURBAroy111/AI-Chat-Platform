@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import MessageBubble from './MessageBubble';
 import ModelSelector from './ModelSelector';
 import { getChatMessages, sendMessage } from '../services/api';
-import { TASK_TYPES, MODELS } from '../utils/models';
+import { TASK_TYPES, MODELS, getModelName } from '../utils/models';
 import { ThemeContext } from '../App';
 
 const TASK_ICONS = { text: '💬', image: '🎨', video: '🎬' };
@@ -22,21 +22,25 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
   const inputRef = useRef(null);
   const { theme } = useContext(ThemeContext);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   // Load messages when chat changes
   useEffect(() => {
     if (!chat?.id) {
       setMessages([]);
+      setSelectedModelId(null);
       return;
     }
     setLoading(true);
+    setMessages([]); // clear immediately to avoid flash of old messages
     getChatMessages(chat.id)
       .then(data => {
         setMessages(data.messages || []);
         setSelectedModelId(data.chat?.model_id || null);
+        // Scroll to bottom without animation on initial load
+        setTimeout(() => scrollToBottom('instant'), 50);
       })
       .catch(err => console.error('Load messages error:', err))
       .finally(() => setLoading(false));
@@ -49,7 +53,7 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
   // Focus input when chat loads
   useEffect(() => {
     if (chat && !sending) inputRef.current?.focus();
-  }, [chat]);
+  }, [chat?.id]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -82,21 +86,28 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
         return [...withoutTemp, ...newMsgs];
       });
 
-      // Update chat in parent (title may have changed)
-      if (data.userMessage) {
-        onChatUpdated?.({ ...chat, title: trimmed.substring(0, 60), model_id: modelId });
-      }
+      // Update chat in sidebar with server-confirmed title
+      onChatUpdated?.({
+        id: chat.id,
+        title: data.chatTitle || trimmed.substring(0, 60),
+        model_id: modelId,
+      });
     } catch (err) {
-      // Show error as system message
+      // Show error as system message (replace temp user msg)
       setMessages(prev => {
         const withoutTemp = prev.filter(m => m.id !== tempUserId);
-        return [...withoutTemp, {
-          id: 'err-' + Date.now(),
-          role: 'assistant',
-          content: `⚠️ Error: ${err.message}`,
-          media_type: 'text',
-          created_at: new Date().toISOString(),
-        }];
+        return [
+          ...withoutTemp,
+          // Keep the user message
+          { ...tempUserMsg, id: 'user-' + Date.now() },
+          {
+            id: 'err-' + Date.now(),
+            role: 'assistant',
+            content: `⚠️ ${err.message}`,
+            media_type: 'text',
+            created_at: new Date().toISOString(),
+          },
+        ];
       });
     } finally {
       setSending(false);
@@ -142,7 +153,9 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
         </div>
 
         {/* Welcome screen */}
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center ${
+          theme === 'dark' ? 'bg-[#0f0f17]' : 'bg-gray-50'
+        }`}>
           <div className="text-6xl mb-4">✨</div>
           <h2 className={`text-2xl font-bold mb-2 ${
             theme === 'dark' ? 'text-white' : 'text-gray-900'
@@ -161,7 +174,7 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
                 className={`p-5 rounded-2xl transition-all duration-150 text-left group ${
                   theme === 'dark'
                     ? 'border border-white/10 hover:border-indigo-500/50 bg-white/3 hover:bg-indigo-600/10'
-                    : 'border border-gray-200 hover:border-indigo-400 bg-gray-50 hover:bg-indigo-50'
+                    : 'border border-gray-200 hover:border-indigo-400 bg-white hover:bg-indigo-50'
                 }`}
               >
                 <div className="text-3xl mb-3">{task.icon}</div>
@@ -190,7 +203,8 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
 
   const taskInfo = TASK_TYPES.find(t => t.id === chat.task_type);
   const availableModels = MODELS[chat.task_type] || [];
-  const currentModel = availableModels.find(m => m.id === (selectedModelId || chat.model_id));
+  const activeModelId = selectedModelId || chat.model_id;
+  const currentModelName = getModelName(activeModelId);
   const charLimit = chat.task_type === 'video' ? 500 : null;
 
   return (
@@ -222,13 +236,13 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
           }`}>{chat.title || 'New Chat'}</p>
           <p className={`text-xs ${
             theme === 'dark' ? 'text-slate-500' : 'text-gray-500'
-          }`}>{taskInfo?.name} · {currentModel?.name || chat.model_id}</p>
+          }`}>{taskInfo?.name} · {currentModelName}</p>
         </div>
 
         {/* Model selector */}
         <ModelSelector
           models={availableModels}
-          selectedModelId={selectedModelId || chat.model_id}
+          selectedModelId={activeModelId}
           onSelect={setSelectedModelId}
         />
       </div>
@@ -299,9 +313,9 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
         <div className="relative max-w-4xl mx-auto">
           <div className={`
             flex items-end gap-3 border rounded-2xl px-4 py-3 transition-colors
-            ${sending 
-              ? theme === 'dark' ? 'border-white/5 bg-[#1e1e30]' : 'border-gray-300 bg-gray-100'
-              : theme === 'dark' 
+            ${sending
+              ? theme === 'dark' ? 'border-white/5 bg-[#1e1e30]' : 'border-gray-200 bg-gray-100'
+              : theme === 'dark'
                 ? 'border-white/10 focus-within:border-indigo-500/50 bg-[#1e1e30]'
                 : 'border-gray-300 focus-within:border-indigo-500 bg-white'
             }
@@ -319,10 +333,10 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
               disabled={sending}
               rows={1}
               maxLength={charLimit || 2000}
-              className={`flex-1 placeholder-opacity-70 text-sm resize-none focus:outline-none min-h-[24px] max-h-32 leading-6 disabled:opacity-50 ${
+              className={`flex-1 text-sm resize-none focus:outline-none min-h-[24px] max-h-32 leading-6 disabled:opacity-50 ${
                 theme === 'dark'
                   ? 'bg-transparent text-slate-200 placeholder-slate-500'
-                  : 'bg-transparent text-gray-900 placeholder-gray-500'
+                  : 'bg-transparent text-gray-900 placeholder-gray-400'
               }`}
               style={{ height: 'auto' }}
               onInput={e => {
@@ -334,8 +348,8 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
             <div className="flex items-center gap-2 flex-shrink-0">
               {charLimit && (
                 <span className={`text-xs ${
-                  input.length > charLimit * 0.9 
-                    ? 'text-orange-400' 
+                  input.length > charLimit * 0.9
+                    ? 'text-orange-400'
                     : theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
                 }`}>
                   {input.length}/{charLimit}
@@ -366,10 +380,10 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
           </div>
 
           <p className={`text-xs text-center mt-2 ${
-            theme === 'dark' ? 'text-slate-600' : 'text-gray-500'
+            theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
           }`}>
             Enter to send · Shift+Enter for new line
-            {chat.task_type === 'video' && ' · Video generation takes 1-2 minutes'}
+            {chat.task_type === 'video' && ' · Video generation takes 1–2 minutes'}
           </p>
         </div>
       </div>
