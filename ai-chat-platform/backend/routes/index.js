@@ -37,10 +37,9 @@ router.get('/admin/disk-usage', (req, res) => {
 // Admin: credits & token usage from fal.ai
 router.get('/admin/credits', async (req, res) => {
   try {
-    const { fal } = require('@fal-ai/client');
-    // Try fetching billing info from fal.ai REST API
     const FAL_KEY = process.env.FAL_KEY || '';
-    const response = await fetch('https://api.fal.ai/dashboard/billing', {
+    // Official fal.ai Platform API: GET /v1/account/billing?expand=credits
+    const response = await fetch('https://api.fal.ai/v1/account/billing?expand=credits', {
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
@@ -48,37 +47,72 @@ router.get('/admin/credits', async (req, res) => {
     });
 
     if (!response.ok) {
-      // Fallback: return partial info
-      return res.json({
-        success: true,
-        balance: null,
-        total: null,
-        used: null,
-        inputTokens: null,
-        outputTokens: null,
-        totalTokens: null,
-        note: 'Billing API not available',
+      const errText = await response.text();
+      console.error('fal.ai billing API error:', response.status, errText);
+      return res.status(response.status).json({
+        success: false,
+        error: `fal.ai billing API returned ${response.status}`,
+        detail: errText,
       });
     }
 
     const data = await response.json();
-    // fal.ai billing response shape varies; try common fields
-    const balance = data.balance ?? data.credits ?? data.remaining ?? null;
-    const total = data.total ?? data.limit ?? null;
-    const used = (total != null && balance != null) ? total - balance : (data.used ?? null);
+    // Response shape: { username, credits: { current_balance, currency } }
+    const balance = data.credits?.current_balance ?? null;
+    const currency = data.credits?.currency ?? 'USD';
 
     return res.json({
       success: true,
+      username: data.username ?? null,
       balance,
-      total,
-      used,
-      inputTokens: data.input_tokens ?? data.inputTokens ?? null,
-      outputTokens: data.output_tokens ?? data.outputTokens ?? null,
-      totalTokens: data.total_tokens ?? data.totalTokens ?? null,
+      currency,
       raw: data,
     });
   } catch (err) {
     console.error('Credits fetch error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin: fetch real unit pricing from fal.ai for models used in this app
+router.get('/admin/model-pricing', async (req, res) => {
+  try {
+    const FAL_KEY = process.env.FAL_KEY || '';
+    const modelIds = [
+      'fal-ai/flux/schnell',
+      'fal-ai/flux-pro',
+      'fal-ai/flux-pro/v1.1-ultra',
+      'fal-ai/imagen4/preview',
+      'fal-ai/kling-video/v1.6/standard/text-to-video',
+      'fal-ai/kling-video/v1.6/pro/text-to-video',
+      'fal-ai/luma-dream-machine',
+      'fal-ai/veo3/fast',
+    ];
+    const params = modelIds.map(id => `endpoint_id=${encodeURIComponent(id)}`).join('&');
+    const response = await fetch(`https://api.fal.ai/v1/models/pricing?${params}`, {
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(response.status).json({ success: false, error: errText });
+    }
+
+    const data = await response.json();
+    const pricing = {};
+    for (const p of (data.prices || [])) {
+      pricing[p.endpoint_id] = {
+        unit_price: p.unit_price,
+        unit: p.unit,
+        currency: p.currency || 'USD',
+      };
+    }
+    return res.json({ success: true, pricing });
+  } catch (err) {
+    console.error('Model pricing fetch error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

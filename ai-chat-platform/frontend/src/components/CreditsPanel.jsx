@@ -17,7 +17,7 @@ export default function CreditsPanel() {
       if (data.success) {
         setCredits(data);
       } else {
-        setError(data.error || 'Failed to load');
+        setError(data.error || 'Failed to load credits');
       }
     } catch (e) {
       setError('Could not reach server');
@@ -32,14 +32,24 @@ export default function CreditsPanel() {
 
   const formatUSD = (val) => {
     if (val == null) return '—';
+    return `$${Number(val).toFixed(4).replace(/\.?0+$/, '') || '0'}`;
+  };
+
+  const formatUSDFull = (val) => {
+    if (val == null) return '—';
     return `$${Number(val).toFixed(2)}`;
   };
 
-  const usagePercent = credits
-    ? Math.min(100, ((credits.used / (credits.total || 1)) * 100))
-    : 0;
+  const balance = credits?.balance ?? null;
 
-  const barColor = usagePercent > 80 ? 'bg-red-500' : usagePercent > 50 ? 'bg-yellow-500' : 'bg-emerald-500';
+  // Color the balance: green if >$5, yellow if >$1, red if low
+  const balanceColor = balance == null
+    ? (dark ? 'text-slate-400' : 'text-gray-500')
+    : balance > 5
+      ? (dark ? 'text-emerald-400' : 'text-emerald-600')
+      : balance > 1
+        ? (dark ? 'text-yellow-400' : 'text-yellow-600')
+        : (dark ? 'text-red-400' : 'text-red-500');
 
   return (
     <div className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
@@ -62,14 +72,21 @@ export default function CreditsPanel() {
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-gray-700'}`}>Credits</p>
+          <p className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-gray-700'}`}>
+            fal.ai Credits
+            {credits?.username && (
+              <span className={`ml-1.5 font-normal ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
+                @{credits.username}
+              </span>
+            )}
+          </p>
           {loading ? (
-            <div className={`h-3 w-16 rounded mt-0.5 animate-pulse ${dark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <div className={`h-3 w-20 rounded mt-0.5 animate-pulse ${dark ? 'bg-white/10' : 'bg-gray-200'}`} />
           ) : error ? (
             <p className="text-xs text-red-400 truncate">{error}</p>
           ) : (
-            <p className={`text-xs font-semibold ${dark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-              {formatUSD(credits?.balance)} remaining
+            <p className={`text-xs font-semibold ${balanceColor}`}>
+              {formatUSDFull(balance)} remaining
             </p>
           )}
         </div>
@@ -86,7 +103,7 @@ export default function CreditsPanel() {
         <div className={`px-4 pb-4 border-t ${dark ? 'border-white/5' : 'border-gray-200'}`}>
           {loading ? (
             <div className="space-y-2 pt-3">
-              {[1,2,3].map(i => (
+              {[1, 2, 3].map(i => (
                 <div key={i} className={`h-3 rounded animate-pulse ${dark ? 'bg-white/8' : 'bg-gray-200'}`} style={{ width: `${60 + i * 10}%` }} />
               ))}
             </div>
@@ -104,34 +121,41 @@ export default function CreditsPanel() {
             </div>
           ) : credits ? (
             <div className="pt-3 space-y-3">
-              {/* Usage bar */}
-              {credits.total != null && (
+              {/* Balance card */}
+              <div className={`rounded-xl px-3 py-3 flex items-center justify-between ${
+                dark ? 'bg-white/4' : 'bg-white border border-gray-100'
+              }`}>
                 <div>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className={dark ? 'text-slate-500' : 'text-gray-500'}>Used</span>
-                    <span className={dark ? 'text-slate-400' : 'text-gray-600'}>
-                      {formatUSD(credits.used)} / {formatUSD(credits.total)}
-                    </span>
-                  </div>
-                  <div className={`w-full h-1.5 rounded-full ${dark ? 'bg-white/8' : 'bg-gray-200'}`}>
-                    <div
-                      className={`h-1.5 rounded-full transition-all ${barColor}`}
-                      style={{ width: `${usagePercent}%` }}
-                    />
-                  </div>
-                  <p className={`text-xs mt-1 ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
-                    {usagePercent.toFixed(1)}% used
+                  <p className={`text-xs ${dark ? 'text-slate-500' : 'text-gray-400'}`}>Available Balance</p>
+                  <p className={`text-2xl font-bold mt-0.5 ${balanceColor}`}>
+                    {formatUSDFull(balance)}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
+                    {credits.currency || 'USD'} · Live from fal.ai
+                  </p>
+                </div>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  dark ? 'bg-emerald-500/15' : 'bg-emerald-50'
+                }`}>
+                  <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Low balance warning */}
+              {balance != null && balance < 1 && (
+                <div className={`rounded-xl px-3 py-2 flex items-center gap-2 ${
+                  dark ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50 border border-red-200'
+                }`}>
+                  <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className={`text-xs ${dark ? 'text-red-300' : 'text-red-600'}`}>
+                    Low balance — top up at fal.ai/dashboard
                   </p>
                 </div>
               )}
-
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-2">
-                <StatBox label="Balance" value={formatUSD(credits.balance)} dark={dark} color="emerald" />
-                <StatBox label="Total Tokens" value={credits.totalTokens != null ? fmtNum(credits.totalTokens) : '—'} dark={dark} color="indigo" />
-                <StatBox label="Input Tokens" value={credits.inputTokens != null ? fmtNum(credits.inputTokens) : '—'} dark={dark} color="blue" />
-                <StatBox label="Output Tokens" value={credits.outputTokens != null ? fmtNum(credits.outputTokens) : '—'} dark={dark} color="purple" />
-              </div>
 
               <button
                 onClick={(e) => { e.stopPropagation(); fetchCredits(); }}
@@ -142,7 +166,7 @@ export default function CreditsPanel() {
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Refresh
+                Refresh Balance
               </button>
             </div>
           ) : null}
@@ -150,25 +174,4 @@ export default function CreditsPanel() {
       )}
     </div>
   );
-}
-
-function StatBox({ label, value, dark, color }) {
-  const colors = {
-    emerald: dark ? 'text-emerald-400' : 'text-emerald-600',
-    indigo:  dark ? 'text-indigo-400'  : 'text-indigo-600',
-    blue:    dark ? 'text-blue-400'    : 'text-blue-600',
-    purple:  dark ? 'text-purple-400'  : 'text-purple-600',
-  };
-  return (
-    <div className={`rounded-xl px-3 py-2 ${dark ? 'bg-white/4' : 'bg-white border border-gray-100'}`}>
-      <p className={`text-xs ${dark ? 'text-slate-500' : 'text-gray-400'}`}>{label}</p>
-      <p className={`text-sm font-semibold mt-0.5 ${colors[color]}`}>{value}</p>
-    </div>
-  );
-}
-
-function fmtNum(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
 }

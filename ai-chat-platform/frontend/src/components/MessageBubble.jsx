@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useContext } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { pollJobStatus, getMediaUrl } from '../services/api';
 import { getModelName } from '../utils/models';
+import { getModelPricing, toEndpointId, formatCost } from '../utils/modelPricing';
 import { ThemeContext } from '../App';
 
 function TypingIndicator() {
@@ -14,21 +15,44 @@ function TypingIndicator() {
   );
 }
 
-// Cost estimates per model for display under image messages
-const IMAGE_COSTS = {
-  'fal-ai/flux/schnell':        '$0.003',
-  'fal-ai/flux-pro':            '$0.040',
-  'fal-ai/flux-pro/v1.1-ultra': '$0.070',
-  'fal-ai/imagen4/preview':     '$0.020',
+// Static fallback costs (used while real pricing loads)
+const IMAGE_COSTS_FALLBACK = {
+  'fal-ai/flux/schnell':        { price: 0.003, unit: 'image' },
+  'fal-ai/flux-pro':            { price: 0.040, unit: 'image' },
+  'fal-ai/flux-pro/v1.1-ultra': { price: 0.070, unit: 'image' },
+  'fal-ai/imagen4/preview':     { price: 0.020, unit: 'image' },
 };
-const VIDEO_COSTS = {
-  'fal-ai/kling-video/v1.6/standard': '$0.22/10s',
-  'fal-ai/kling-video/v1.6/pro':      '$0.52/10s',
-  'fal-ai/luma-dream-machine':         '$0.50/10s',
-  'fal-ai/veo3/fast':                  '$0.64/10s',
+const VIDEO_COSTS_FALLBACK = {
+  'fal-ai/kling-video/v1.6/standard': { price: 0.22, unit: 'video' },
+  'fal-ai/kling-video/v1.6/pro':      { price: 0.52, unit: 'video' },
+  'fal-ai/luma-dream-machine':         { price: 0.50, unit: 'video' },
+  'fal-ai/veo3/fast':                  { price: 0.64, unit: 'video' },
 };
 
-function CreditBadge({ label, dark }) {
+function useLiveCost(modelId) {
+  const [cost, setCost] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!modelId) { setLoading(false); return; }
+    const endpointId = toEndpointId(modelId);
+    getModelPricing().then(pricing => {
+      const entry = pricing[endpointId];
+      if (entry) {
+        setCost({ price: entry.unit_price, unit: entry.unit, live: true });
+      } else {
+        // Fall back to static table
+        const fb = IMAGE_COSTS_FALLBACK[modelId] || VIDEO_COSTS_FALLBACK[modelId];
+        if (fb) setCost({ ...fb, live: false });
+      }
+      setLoading(false);
+    });
+  }, [modelId]);
+
+  return { cost, loading };
+}
+
+function CreditBadge({ label, dark, live }) {
   return (
     <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
       dark
@@ -39,6 +63,9 @@ function CreditBadge({ label, dark }) {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
       {label}
+      {live && (
+        <span className={`w-1.5 h-1.5 rounded-full ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live pricing from fal.ai" />
+      )}
     </span>
   );
 }
@@ -49,7 +76,9 @@ function ImageMessage({ message }) {
   const { theme } = useContext(ThemeContext);
   const url = getMediaUrl(message.media_url);
   const dark = theme === 'dark';
-  const cost = IMAGE_COSTS[message.model_id];
+  const { cost, loading: costLoading } = useLiveCost(message.model_id);
+
+  const costLabel = cost ? `${formatCost(cost.price, cost.unit)} used` : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -86,7 +115,7 @@ function ImageMessage({ message }) {
                 </svg>
                 Download
               </a>
-              {cost && loaded && <CreditBadge label={`~${cost} used`} dark={dark} />}
+              {costLabel && loaded && <CreditBadge label={costLabel} dark={dark} live={cost?.live} />}
             </div>
           </div>
         )}
@@ -105,7 +134,8 @@ function VideoMessage({ message, onStatusUpdate }) {
   const dotsRef = useRef(null);
   const { theme } = useContext(ThemeContext);
   const dark = theme === 'dark';
-  const cost = VIDEO_COSTS[message.model_id];
+  const { cost } = useLiveCost(message.model_id);
+  const costLabel = cost ? `${formatCost(cost.price, cost.unit)} used` : null;
 
   useEffect(() => {
     if (status === 'processing') {
@@ -201,10 +231,10 @@ function VideoMessage({ message, onStatusUpdate }) {
           💡 Video generation takes 1–2 minutes. You can browse other chats while waiting.
         </div>
 
-        {cost && (
+        {costLabel && (
           <div className="mt-2 flex justify-end">
             <span className={`text-xs ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
-              Est. cost: {cost}
+              Est. cost: {costLabel}
             </span>
           </div>
         )}
@@ -248,7 +278,7 @@ function VideoMessage({ message, onStatusUpdate }) {
           </svg>
           Download Video
         </a>
-        {cost && <CreditBadge label={`~${cost} used`} dark={theme === 'dark'} />}
+        {costLabel && <CreditBadge label={costLabel} dark={theme === 'dark'} live={cost?.live} />}
       </div>
     </div>
   );
