@@ -4,15 +4,14 @@ require('dotenv').config();
 // Configure fal client
 fal.config({ credentials: process.env.FAL_KEY });
 
-// Map stored model_id → actual fal endpoint + inner model param
-// Model strings must match exactly what fal-ai/any-llm accepts
+// ─── TEXT ────────────────────────────────────────────────────────────────────
+
 function resolveTextModel(modelId) {
   const MAP = {
-    // Current IDs used by the frontend
     'fal-ai/any-llm':         { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3-haiku' },
     'fal-ai/any-llm::sonnet': { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3.5-sonnet' },
     'fal-ai/any-llm::gemini': { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
-    // Legacy IDs still in DB from before the fix
+    // Legacy IDs still in DB
     'fal-ai/claude-haiku':  { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3-haiku' },
     'fal-ai/claude-sonnet': { endpoint: 'fal-ai/any-llm', model: 'anthropic/claude-3.5-sonnet' },
     'fal-ai/gemini-flash':  { endpoint: 'fal-ai/any-llm', model: 'google/gemini-flash-1.5' },
@@ -22,13 +21,29 @@ function resolveTextModel(modelId) {
   return resolved;
 }
 
-// === TEXT GENERATION ===
-// fal-ai/any-llm uses "prompt" not "messages"
-// History is formatted into the prompt string manually
+// ─── VIDEO ───────────────────────────────────────────────────────────────────
+
+// fal.ai Kling endpoints require the full path including /text-to-video
+// submit/status/result must all use the SAME full endpoint string
+function resolveVideoEndpoint(modelId) {
+  const MAP = {
+    'fal-ai/kling-video/v1.6/standard': 'fal-ai/kling-video/v1.6/standard/text-to-video',
+    'fal-ai/kling-video/v1.6/pro':      'fal-ai/kling-video/v1.6/pro/text-to-video',
+    // Luma and Veo don't need a suffix
+    'fal-ai/luma-dream-machine': 'fal-ai/luma-dream-machine',
+    'fal-ai/veo3/fast':          'fal-ai/veo3/fast',
+  };
+  const resolved = MAP[modelId] || modelId;
+  console.log(`[resolveVideoEndpoint] "${modelId}" → "${resolved}"`);
+  return resolved;
+}
+
+// ─── TEXT GENERATION ─────────────────────────────────────────────────────────
+
 async function generateText(modelId, prompt, history = []) {
   const { endpoint, model } = resolveTextModel(modelId);
 
-  // Build a single prompt string that includes conversation history
+  // Build a single prompt string with conversation history
   let fullPrompt = prompt;
   if (history && history.length > 0) {
     const historyText = history
@@ -51,7 +66,6 @@ async function generateText(modelId, prompt, history = []) {
       },
     });
 
-    // Log raw output shape once for debugging
     const output = result.data || result;
     console.log(`[generateText] response keys: ${Object.keys(output).join(', ')}`);
 
@@ -61,19 +75,17 @@ async function generateText(modelId, prompt, history = []) {
     if (output.choices?.[0]?.message?.content) return output.choices[0].message.content;
     if (output.content) {
       if (typeof output.content === 'string') return output.content;
-      if (Array.isArray(output.content)) {
-        return output.content.map(c => c.text || '').join('');
-      }
+      if (Array.isArray(output.content)) return output.content.map(c => c.text || '').join('');
     }
     return JSON.stringify(output);
   } catch (err) {
-    console.error(`[generateText] ERROR body:`, JSON.stringify(err?.body || err?.message || err, null, 2));
+    console.error(`[generateText] ERROR:`, JSON.stringify(err?.body || err?.message || err, null, 2));
     throw err;
   }
 }
 
-// === IMAGE GENERATION ===
-// Returns fal.ai CDN URL directly — no local download, works on Render/Vercel
+// ─── IMAGE GENERATION ────────────────────────────────────────────────────────
+
 async function generateImage(modelId, prompt) {
   console.log(`[generateImage] calling ${modelId}`);
   try {
@@ -99,11 +111,13 @@ async function generateImage(modelId, prompt) {
   }
 }
 
-// === VIDEO GENERATION (async with polling) ===
+// ─── VIDEO GENERATION ────────────────────────────────────────────────────────
+
 async function submitVideoJob(modelId, prompt) {
-  console.log(`[submitVideoJob] calling ${modelId}`);
+  const endpoint = resolveVideoEndpoint(modelId);
+  console.log(`[submitVideoJob] calling ${endpoint}`);
   try {
-    const { request_id } = await fal.queue.submit(modelId, {
+    const { request_id } = await fal.queue.submit(endpoint, {
       input: {
         prompt,
         duration: '5',
@@ -119,8 +133,11 @@ async function submitVideoJob(modelId, prompt) {
 }
 
 async function checkVideoStatus(modelId, requestId) {
+  // IMPORTANT: must use the same resolved endpoint for status + result
+  const endpoint = resolveVideoEndpoint(modelId);
+  console.log(`[checkVideoStatus] polling ${endpoint} for ${requestId}`);
   try {
-    const status = await fal.queue.status(modelId, {
+    const status = await fal.queue.status(endpoint, {
       requestId,
       logs: true,
     });
@@ -128,9 +145,8 @@ async function checkVideoStatus(modelId, requestId) {
     console.log(`[checkVideoStatus] ${requestId} → ${status.status}`);
 
     if (status.status === 'COMPLETED') {
-      const result = await fal.queue.result(modelId, { requestId });
+      const result = await fal.queue.result(endpoint, { requestId });
       const output = result.data || result;
-      // Return fal.ai CDN URL directly — no local download
       const videoUrl = output.video?.url || output.videos?.[0]?.url;
       if (!videoUrl) throw new Error('No video URL in completed result');
       console.log(`[checkVideoStatus] complete: ${videoUrl}`);
@@ -148,7 +164,8 @@ async function checkVideoStatus(modelId, requestId) {
   }
 }
 
-// Kept for /admin/disk-usage route compatibility
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
 function getUploadsDiskUsage() {
   return { totalSize: 0, totalSizeMB: '0.00', fileCount: 0 };
 }
