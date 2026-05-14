@@ -305,86 +305,142 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
       </div>
 
       {/* Input area */}
-      <div className={`flex-shrink-0 p-4 border-t ${
+      <div className={`flex-shrink-0 border-t ${
         theme === 'dark'
           ? 'bg-[#13131f] border-white/5'
           : 'bg-white border-gray-200'
       }`}>
-        <div className="relative max-w-4xl mx-auto">
-          <div className={`
-            flex items-end gap-3 border rounded-2xl px-4 py-3 transition-colors
-            ${sending
-              ? theme === 'dark' ? 'border-white/5 bg-[#1e1e30]' : 'border-gray-200 bg-gray-100'
-              : theme === 'dark'
-                ? 'border-white/10 focus-within:border-indigo-500/50 bg-[#1e1e30]'
-                : 'border-gray-300 focus-within:border-indigo-500 bg-white'
-            }
-          `}>
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                chat.task_type === 'text' ? 'Type a message...' :
-                chat.task_type === 'image' ? 'Describe the image you want...' :
-                'Describe the video you want...'
-              }
-              disabled={sending}
-              rows={1}
-              maxLength={charLimit || 2000}
-              className={`flex-1 text-sm resize-none focus:outline-none min-h-[24px] max-h-32 leading-6 disabled:opacity-50 ${
-                theme === 'dark'
-                  ? 'bg-transparent text-slate-200 placeholder-slate-500'
-                  : 'bg-transparent text-gray-900 placeholder-gray-400'
-              }`}
-              style={{ height: 'auto' }}
-              onInput={e => {
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-              }}
-            />
-
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {charLimit && (
-                <span className={`text-xs ${
-                  input.length > charLimit * 0.9
-                    ? 'text-orange-400'
-                    : theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
+        {/* Video generation panel */}
+        {chat.task_type === 'video' && (
+          <div className={`px-4 pt-3 pb-0 max-w-4xl mx-auto`}>
+            <div className={`rounded-2xl border p-3 mb-3 ${
+              theme === 'dark'
+                ? 'bg-gradient-to-r from-orange-500/5 to-red-500/5 border-orange-500/15'
+                : 'bg-orange-50 border-orange-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm">🎬</span>
+                <p className={`text-xs font-semibold ${theme === 'dark' ? 'text-orange-300' : 'text-orange-700'}`}>
+                  Video Generation
+                </p>
+                <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${
+                  theme === 'dark' ? 'bg-orange-500/15 text-orange-400' : 'bg-orange-100 text-orange-600'
                 }`}>
-                  {input.length}/{charLimit}
+                  Takes 1–2 min
                 </span>
-              )}
-
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || sending}
-                className="
-                  w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150
-                  bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed
-                  active:scale-95 shadow-lg shadow-indigo-600/30
-                "
-              >
-                {sending ? (
-                  <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-slate-500' : 'text-gray-500'}`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                ) : (
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7" />
+                  16:9 · 5 seconds · Auto-polled every 5s
+                </span>
+                <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-slate-500' : 'text-gray-500'}`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                )}
-              </button>
+                  Be descriptive: style, mood, camera movement, lighting
+                </span>
+              </div>
             </div>
           </div>
+        )}
 
-          <p className={`text-xs text-center mt-2 ${
-            theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
-          }`}>
-            Enter to send · Shift+Enter for new line
-            {chat.task_type === 'video' && ' · Video generation takes 1–2 minutes'}
-          </p>
+        <div className="p-4 pt-3">
+          <div className="relative max-w-4xl mx-auto">
+            <div className={`
+              flex items-end gap-3 border rounded-2xl px-4 py-3 transition-colors
+              ${sending
+                ? theme === 'dark' ? 'border-white/5 bg-[#1e1e30]' : 'border-gray-200 bg-gray-100'
+                : theme === 'dark'
+                  ? 'border-white/10 focus-within:border-indigo-500/50 bg-[#1e1e30]'
+                  : 'border-gray-300 focus-within:border-indigo-500 bg-white'
+              }
+            `}>
+              {/* Video icon in input */}
+              {chat.task_type === 'video' && (
+                <span className="text-lg flex-shrink-0 pb-0.5">🎬</span>
+              )}
+              {chat.task_type === 'image' && (
+                <span className="text-lg flex-shrink-0 pb-0.5">🎨</span>
+              )}
+
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  chat.task_type === 'text' ? 'Type a message...' :
+                  chat.task_type === 'image' ? 'Describe the image you want to generate...' :
+                  'Describe your video: scene, style, camera movement, mood...'
+                }
+                disabled={sending}
+                rows={chat.task_type === 'video' ? 2 : 1}
+                maxLength={charLimit || 2000}
+                className={`flex-1 text-sm resize-none focus:outline-none min-h-[24px] max-h-40 leading-6 disabled:opacity-50 ${
+                  theme === 'dark'
+                    ? 'bg-transparent text-slate-200 placeholder-slate-500'
+                    : 'bg-transparent text-gray-900 placeholder-gray-400'
+                }`}
+                style={{ height: 'auto' }}
+                onInput={e => {
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+                }}
+              />
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {charLimit && (
+                  <span className={`text-xs ${
+                    input.length > charLimit * 0.9
+                      ? 'text-orange-400'
+                      : theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
+                  }`}>
+                    {input.length}/{charLimit}
+                  </span>
+                )}
+
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || sending}
+                  className={`
+                    w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-150
+                    disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 shadow-lg
+                    ${chat.task_type === 'video'
+                      ? 'bg-gradient-to-br from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 shadow-orange-500/30'
+                      : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
+                    }
+                  `}
+                >
+                  {sending ? (
+                    <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : chat.task_type === 'video' ? (
+                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <p className={`text-xs text-center mt-2 ${
+              theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
+            }`}>
+              {chat.task_type === 'video'
+                ? '🎬 Video queued immediately · Polls every 5s · You can switch chats'
+                : 'Enter to send · Shift+Enter for new line'
+              }
+            </p>
+          </div>
         </div>
       </div>
     </div>

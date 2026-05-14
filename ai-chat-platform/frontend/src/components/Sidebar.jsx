@@ -1,5 +1,6 @@
 import { useState, useContext } from 'react';
 import { ThemeContext } from '../App';
+import CreditsPanel from './CreditsPanel';
 
 const TASK_ICONS = { text: '💬', image: '🎨', video: '🎬' };
 
@@ -174,16 +175,12 @@ export default function Sidebar({ chats, activeChatId, onSelectChat, onDeleteCha
       </div>
 
       {/* Footer */}
-      <div className={`p-4 border-t ${
-        theme === 'dark' 
-          ? 'border-white/5' 
+      <div className={`p-3 border-t ${
+        theme === 'dark'
+          ? 'border-white/5'
           : 'border-gray-200'
       }`}>
-        <div className={`text-xs text-center ${
-          theme === 'dark' ? 'text-slate-600' : 'text-gray-500'
-        }`}>
-          Chats saved in MySQL · Files in /uploads
-        </div>
+        <CreditsPanel />
       </div>
     </div>
   );

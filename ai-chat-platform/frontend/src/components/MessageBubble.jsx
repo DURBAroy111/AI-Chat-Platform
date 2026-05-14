@@ -14,44 +14,83 @@ function TypingIndicator() {
   );
 }
 
+// Cost estimates per model for display under image messages
+const IMAGE_COSTS = {
+  'fal-ai/flux/schnell':        '$0.003',
+  'fal-ai/flux-pro':            '$0.040',
+  'fal-ai/flux-pro/v1.1-ultra': '$0.070',
+  'fal-ai/imagen4/preview':     '$0.020',
+};
+const VIDEO_COSTS = {
+  'fal-ai/kling-video/v1.6/standard': '$0.22/10s',
+  'fal-ai/kling-video/v1.6/pro':      '$0.52/10s',
+  'fal-ai/luma-dream-machine':         '$0.50/10s',
+  'fal-ai/veo3/fast':                  '$0.64/10s',
+};
+
+function CreditBadge({ label, dark }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+      dark
+        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+        : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+    }`}>
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      {label}
+    </span>
+  );
+}
+
 function ImageMessage({ message }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const { theme } = useContext(ThemeContext);
   const url = getMediaUrl(message.media_url);
+  const dark = theme === 'dark';
+  const cost = IMAGE_COSTS[message.model_id];
 
   return (
-    <div className="relative max-w-sm">
-      {!loaded && !error && (
-        <div className="w-72 h-48 rounded-xl shimmer flex items-center justify-center">
-          <span className="text-slate-500 text-sm">Generating image...</span>
-        </div>
-      )}
-      {error ? (
-        <div className="w-72 h-24 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-          <p className="text-red-400 text-sm">Failed to load image</p>
-        </div>
-      ) : (
-        <div className={loaded ? '' : 'hidden'}>
-          <img
-            src={url}
-            alt="AI generated"
-            className="max-w-full rounded-xl border border-white/10 shadow-lg cursor-zoom-in"
-            onLoad={() => setLoaded(true)}
-            onError={() => setError(true)}
-            onClick={() => window.open(url, '_blank')}
-          />
-          <a
-            href={url}
-            download
-            className="mt-2 flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download Image
-          </a>
-        </div>
-      )}
+    <div className="flex flex-col gap-2">
+      <div className="relative max-w-sm">
+        {!loaded && !error && (
+          <div className="w-72 h-48 rounded-xl shimmer flex items-center justify-center">
+            <span className="text-slate-500 text-sm">Generating image...</span>
+          </div>
+        )}
+        {error ? (
+          <div className="w-72 h-24 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <p className="text-red-400 text-sm">Failed to load image</p>
+          </div>
+        ) : (
+          <div className={loaded ? '' : 'hidden'}>
+            <img
+              src={url}
+              alt="AI generated"
+              className="max-w-full rounded-xl border border-white/10 shadow-lg cursor-zoom-in"
+              onLoad={() => setLoaded(true)}
+              onError={() => setError(true)}
+              onClick={() => window.open(url, '_blank')}
+            />
+            <div className="flex items-center justify-between mt-2">
+              <a
+                href={url}
+                download
+                className={`flex items-center gap-1.5 text-xs transition-colors ${
+                  dark ? 'text-slate-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download
+              </a>
+              {cost && loaded && <CreditBadge label={`~${cost} used`} dark={dark} />}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -59,10 +98,22 @@ function ImageMessage({ message }) {
 function VideoMessage({ message, onStatusUpdate }) {
   const [status, setStatus] = useState(message.status || 'processing');
   const [mediaUrl, setMediaUrl] = useState(message.media_url);
+  const [elapsed, setElapsed] = useState(0);
+  const [dots, setDots] = useState(0);
   const intervalRef = useRef(null);
+  const timerRef = useRef(null);
+  const dotsRef = useRef(null);
+  const { theme } = useContext(ThemeContext);
+  const dark = theme === 'dark';
+  const cost = VIDEO_COSTS[message.model_id];
 
   useEffect(() => {
     if (status === 'processing') {
+      // Elapsed timer
+      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+      // Animated dots
+      dotsRef.current = setInterval(() => setDots(d => (d + 1) % 4), 500);
+      // Poll job
       intervalRef.current = setInterval(async () => {
         try {
           const data = await pollJobStatus(message.id);
@@ -71,65 +122,134 @@ function VideoMessage({ message, onStatusUpdate }) {
             setMediaUrl(data.media_url);
             onStatusUpdate?.(message.id, 'complete', data.media_url);
             clearInterval(intervalRef.current);
+            clearInterval(timerRef.current);
+            clearInterval(dotsRef.current);
           } else if (data.status === 'error') {
             setStatus('error');
             clearInterval(intervalRef.current);
+            clearInterval(timerRef.current);
+            clearInterval(dotsRef.current);
           }
         } catch (err) {
           console.error('Poll error:', err);
         }
       }, 5000);
     }
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      clearInterval(intervalRef.current);
+      clearInterval(timerRef.current);
+      clearInterval(dotsRef.current);
+    };
   }, [message.id, status]);
 
+  const fmtTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
+
   if (status === 'processing') {
+    const dotStr = '.'.repeat(dots);
+    const pct = Math.min(95, (elapsed / 120) * 100);
     return (
-      <div className="bg-slate-800/50 border border-white/10 rounded-xl p-4 max-w-sm">
+      <div className={`rounded-2xl p-4 max-w-xs border ${
+        dark
+          ? 'bg-gradient-to-br from-orange-500/5 to-red-500/5 border-orange-500/20'
+          : 'bg-orange-50 border-orange-200'
+      }`}>
+        {/* Header */}
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center animate-pulse">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${
+            dark ? 'bg-orange-500/15' : 'bg-orange-100'
+          }`}>
             🎬
           </div>
-          <div>
-            <p className="text-white text-sm font-medium">Generating Video</p>
-            <p className="text-slate-400 text-xs">Up to 2 minutes...</p>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>
+              Generating Video{dotStr}
+            </p>
+            <p className={`text-xs ${dark ? 'text-orange-400' : 'text-orange-600'}`}>
+              {getModelName(message.model_id)}
+            </p>
           </div>
         </div>
-        <div className="w-full bg-slate-700 rounded-full h-1.5">
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full animate-pulse w-2/3" />
+
+        {/* Progress bar */}
+        <div className={`w-full h-2 rounded-full overflow-hidden ${dark ? 'bg-white/8' : 'bg-orange-100'}`}>
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-1000"
+            style={{ width: `${pct}%` }}
+          />
         </div>
-        <p className="text-slate-500 text-xs mt-2 text-center">Checking every 5 seconds</p>
+
+        {/* Stats row */}
+        <div className={`flex items-center justify-between mt-2 text-xs ${dark ? 'text-slate-500' : 'text-gray-500'}`}>
+          <span className="flex items-center gap-1">
+            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            {fmtTime(elapsed)} elapsed
+          </span>
+          <span>~{Math.round(pct)}%</span>
+        </div>
+
+        {/* Tips */}
+        <div className={`mt-3 px-3 py-2 rounded-xl text-xs ${
+          dark ? 'bg-white/4 text-slate-500' : 'bg-orange-50 text-orange-700'
+        }`}>
+          💡 Video generation takes 1–2 minutes. You can browse other chats while waiting.
+        </div>
+
+        {cost && (
+          <div className="mt-2 flex justify-end">
+            <span className={`text-xs ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
+              Est. cost: {cost}
+            </span>
+          </div>
+        )}
       </div>
     );
   }
 
   if (status === 'error') {
     return (
-      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 max-w-sm">
-        <p className="text-red-400 text-sm">⚠️ Video generation failed</p>
+      <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 max-w-xs">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg">⚠️</span>
+          <p className="text-red-400 text-sm font-medium">Video generation failed</p>
+        </div>
+        <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-gray-500'}`}>
+          Try again with a different prompt or model.
+        </p>
       </div>
     );
   }
 
   const url = getMediaUrl(mediaUrl);
   return (
-    <div className="max-w-sm">
+    <div className="max-w-sm flex flex-col gap-2">
       <video
         controls
         src={url}
         className="w-full rounded-xl border border-white/10 shadow-lg"
         preload="metadata"
       />
-      <a
-        href={url}
-        download
-        className="mt-2 flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        Download Video
-      </a>
+      <div className="flex items-center justify-between">
+        <a
+          href={url}
+          download
+          className={`flex items-center gap-1.5 text-xs transition-colors ${
+            theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download Video
+        </a>
+        {cost && <CreditBadge label={`~${cost} used`} dark={theme === 'dark'} />}
+      </div>
     </div>
   );
 }
@@ -137,6 +257,7 @@ function VideoMessage({ message, onStatusUpdate }) {
 export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
   const isUser = message.role === 'user';
   const { theme } = useContext(ThemeContext);
+  const dark = theme === 'dark';
 
   if (isLoading) {
     return (
@@ -145,7 +266,7 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
           AI
         </div>
         <div className={`rounded-2xl rounded-tl-sm px-4 py-3 ${
-          theme === 'dark'
+          dark
             ? 'bg-[#1e1e30] border border-white/5'
             : 'bg-white border border-gray-200'
         }`}>
@@ -154,6 +275,11 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
       </div>
     );
   }
+
+  // Token usage for text messages
+  const tokens = message.tokens_used || message.token_count || null;
+  const inputTok = message.input_tokens || null;
+  const outputTok = message.output_tokens || null;
 
   return (
     <div className={`flex items-start gap-3 px-4 py-2 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -166,12 +292,12 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
       </div>
 
       {/* Content */}
-      <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
+      <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div className={`
           rounded-2xl px-4 py-2.5
           ${isUser
             ? 'bg-indigo-600 text-white rounded-tr-sm'
-            : theme === 'dark'
+            : dark
               ? 'bg-[#1e1e30] border border-white/5 text-slate-200 rounded-tl-sm'
               : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
           }
@@ -183,12 +309,12 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
             <VideoMessage message={message} onStatusUpdate={onStatusUpdate} />
           )}
           {(message.media_type === 'text' || (!message.media_url && message.content)) && (
-            <div className={`text-sm ${isUser ? 'text-white' : theme === 'dark' ? 'text-slate-200' : 'text-gray-800'}`}>
+            <div className={`text-sm ${isUser ? 'text-white' : dark ? 'text-slate-200' : 'text-gray-800'}`}>
               {isUser ? (
                 <p className="whitespace-pre-wrap">{message.content}</p>
               ) : (
                 <div className={`prose prose-sm max-w-none ${
-                  theme === 'dark'
+                  dark
                     ? 'prose-invert prose-p:text-slate-200 prose-headings:text-white prose-strong:text-white prose-code:text-indigo-300'
                     : 'prose-p:text-gray-800 prose-headings:text-gray-900'
                 }`}>
@@ -199,13 +325,33 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
           )}
         </div>
 
-        {/* Model badge for assistant */}
-        {!isUser && message.model_id && (
-          <p className={`text-xs mt-1 px-1 ${
-            theme === 'dark' ? 'text-slate-600' : 'text-gray-400'
-          }`}>
-            {getModelName(message.model_id)}
-          </p>
+        {/* Footer: model name + token usage */}
+        {!isUser && (
+          <div className={`flex items-center gap-2 flex-wrap px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
+            {message.model_id && (
+              <p className={`text-xs ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
+                {getModelName(message.model_id)}
+              </p>
+            )}
+            {/* Token badge for text messages */}
+            {message.media_type === 'text' && tokens != null && (
+              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                dark
+                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                  : 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+              }`}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {tokens.toLocaleString()} tokens
+              </span>
+            )}
+            {message.media_type === 'text' && inputTok != null && outputTok != null && (
+              <span className={`text-xs ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
+                ↑{inputTok.toLocaleString()} ↓{outputTok.toLocaleString()}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>

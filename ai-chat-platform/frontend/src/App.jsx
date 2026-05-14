@@ -2,11 +2,15 @@ import { useState, useEffect, useCallback, createContext } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import NewChatModal from './components/NewChatModal';
+import LoginPage from './components/LoginPage';
 import { fetchChats, createChat, deleteChat } from './services/api';
 
 export const ThemeContext = createContext();
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return sessionStorage.getItem('ai_platform_auth') === '1632';
+  });
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -16,20 +20,14 @@ export default function App() {
     return localStorage.getItem('theme') || 'dark';
   });
 
-  // Load all chats from MySQL on start
   const loadChats = useCallback(async () => {
     try {
       const data = await fetchChats();
       const loadedChats = data.chats || [];
       setChats(loadedChats);
-
-      // Restore last active chat from localStorage
       const lastChatId = localStorage.getItem('lastActiveChatId');
       if (lastChatId && loadedChats.find(c => c.id === lastChatId)) {
         setActiveChatId(lastChatId);
-      } else if (loadedChats.length > 0 && !lastChatId) {
-        // Auto-select the most recent chat on first load
-        // (don't auto-select on refresh if no saved preference)
       }
     } catch (err) {
       console.error('Failed to load chats:', err);
@@ -38,7 +36,12 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => { loadChats(); }, [loadChats]);
+  useEffect(() => { if (isLoggedIn) loadChats(); }, [loadChats, isLoggedIn]);
+
+  const handleLogin = () => {
+    sessionStorage.setItem('ai_platform_auth', '1632');
+    setIsLoggedIn(true);
+  };
 
   const handleNewChat = async (taskType, modelId) => {
     try {
@@ -69,11 +72,9 @@ export default function App() {
   const handleSelectChat = (chatId) => {
     setActiveChatId(chatId);
     localStorage.setItem('lastActiveChatId', chatId);
-    // Close sidebar on mobile
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  // Called by ChatWindow after a message is sent — updates title + timestamp in sidebar
   const handleChatUpdated = useCallback((updatedChatFields) => {
     setChats(prev => prev.map(c =>
       c.id === updatedChatFields.id
@@ -90,14 +91,15 @@ export default function App() {
     localStorage.setItem('theme', newTheme);
   };
 
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <div className={`flex h-screen overflow-hidden ${
-        theme === 'dark'
-          ? 'bg-[#0f0f17]'
-          : 'bg-white'
+        theme === 'dark' ? 'bg-[#0f0f17]' : 'bg-white'
       }`}>
-        {/* Mobile overlay */}
         {sidebarOpen && (
           <div
             className={`fixed inset-0 z-20 md:hidden ${
@@ -107,7 +109,6 @@ export default function App() {
           />
         )}
 
-        {/* Sidebar */}
         <div className={`
           fixed md:relative z-30 md:z-auto h-full
           transition-transform duration-300
@@ -124,7 +125,6 @@ export default function App() {
           />
         </div>
 
-        {/* Main chat area */}
         <div className="flex-1 flex flex-col min-w-0">
           <ChatWindow
             chat={activeChat}
@@ -135,7 +135,6 @@ export default function App() {
           />
         </div>
 
-        {/* New Chat Modal */}
         {showNewChatModal && (
           <NewChatModal
             onClose={() => setShowNewChatModal(false)}

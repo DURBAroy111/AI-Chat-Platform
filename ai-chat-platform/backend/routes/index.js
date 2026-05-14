@@ -34,6 +34,55 @@ router.get('/admin/disk-usage', (req, res) => {
   res.json({ success: true, ...usage });
 });
 
+// Admin: credits & token usage from fal.ai
+router.get('/admin/credits', async (req, res) => {
+  try {
+    const { fal } = require('@fal-ai/client');
+    // Try fetching billing info from fal.ai REST API
+    const FAL_KEY = process.env.FAL_KEY || '';
+    const response = await fetch('https://api.fal.ai/dashboard/billing', {
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      // Fallback: return partial info
+      return res.json({
+        success: true,
+        balance: null,
+        total: null,
+        used: null,
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+        note: 'Billing API not available',
+      });
+    }
+
+    const data = await response.json();
+    // fal.ai billing response shape varies; try common fields
+    const balance = data.balance ?? data.credits ?? data.remaining ?? null;
+    const total = data.total ?? data.limit ?? null;
+    const used = (total != null && balance != null) ? total - balance : (data.used ?? null);
+
+    return res.json({
+      success: true,
+      balance,
+      total,
+      used,
+      inputTokens: data.input_tokens ?? data.inputTokens ?? null,
+      outputTokens: data.output_tokens ?? data.outputTokens ?? null,
+      totalTokens: data.total_tokens ?? data.totalTokens ?? null,
+      raw: data,
+    });
+  } catch (err) {
+    console.error('Credits fetch error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Models config (returns all available models)
 router.get('/models', (req, res) => {
   res.json({
