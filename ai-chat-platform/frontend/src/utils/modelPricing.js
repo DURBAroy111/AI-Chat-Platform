@@ -6,7 +6,8 @@ export async function getModelPricing() {
   if (pricingCache) return pricingCache;
   if (fetchPromise) return fetchPromise;
 
-  fetchPromise = fetch('/api/admin/model-pricing')
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
+  fetchPromise = fetch(`${base}/api/admin/model-pricing`)
     .then(r => r.json())
     .then(data => {
       if (data.success) {

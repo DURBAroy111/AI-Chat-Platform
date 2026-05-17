@@ -127,9 +127,11 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
     }
   };
 
-  const handleVideoStatusUpdate = (messageId, status, mediaUrl) => {
+  const handleVideoStatusUpdate = (messageId, status, mediaUrl, costUsd) => {
     setMessages(prev => prev.map(m =>
-      m.id === messageId ? { ...m, status, media_url: mediaUrl } : m
+      m.id === messageId
+        ? { ...m, status, media_url: mediaUrl, ...(costUsd != null ? { cost_usd: costUsd } : {}) }
+        : m
     ));
     if (status === 'complete') {
       window.dispatchEvent(new Event('fal:generation-complete'));

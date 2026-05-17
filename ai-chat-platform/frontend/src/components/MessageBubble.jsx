@@ -69,6 +69,7 @@ function useLiveCost(modelId) {
 // Compute the dollar amount for a generation given cost info
 function computeCostAmount(cost) {
   if (!cost) return null;
+  if (cost.unit === 'actual') return cost.price; // real cost from fal.ai response
   if (cost.unit === 'image') return cost.price;
   if (cost.unit === 'video') return cost.price;
   if (cost.unit === 'second' && cost.duration) return cost.price * cost.duration;
@@ -79,10 +80,11 @@ function formatCostLabel(cost) {
   if (!cost) return null;
   const amount = computeCostAmount(cost);
   if (amount == null) return null;
+  if (cost.real) return `$${amount.toFixed(4)}`; // exact billed amount
   if (cost.unit === 'second' && cost.duration) {
     return `~$${amount.toFixed(3)} (${cost.duration}s @ $${cost.price}/s)`;
   }
-  return `$${amount.toFixed(3)}`;
+  return `~$${amount.toFixed(3)}`; // estimate prefix
 }
 
 function CreditBadge({ label, dark, live }) {
@@ -183,7 +185,7 @@ function VideoMessage({ message, onStatusUpdate }) {
           if (data.status === 'complete') {
             setStatus('complete');
             setMediaUrl(data.media_url);
-            onStatusUpdate?.(message.id, 'complete', data.media_url);
+            onStatusUpdate?.(message.id, 'complete', data.media_url, data.cost_usd ?? null);
             clearInterval(intervalRef.current);
             clearInterval(timerRef.current);
             clearInterval(dotsRef.current);
@@ -344,8 +346,16 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
   const inputTok = message.input_tokens || null;
   const outputTok = message.output_tokens || null;
 
-  // Credit cost hook (used for all media types)
-  const { cost: msgCost } = useLiveCost(!isUser ? message.model_id : null);
+  // Real cost from DB (set by backend after fal.ai response)
+  const realCostUsd = message.cost_usd != null ? Number(message.cost_usd) : null;
+
+  // Credit cost hook — used as fallback estimate when real cost isn't available
+  const { cost: msgCostEstimate } = useLiveCost(!isUser && realCostUsd == null ? message.model_id : null);
+  
+  // Prefer real cost; fall back to estimate
+  const msgCost = realCostUsd != null
+    ? { price: realCostUsd, unit: 'actual', live: false, real: true }
+    : msgCostEstimate;
 
   return (
     <div className={`flex items-start gap-3 px-4 py-2 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -419,20 +429,27 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
               </span>
             )}
 
-            {/* Credit cost line — shown for image + video messages (text messages billed differently) */}
-            {(message.media_type === 'image' || message.media_type === 'video') && msgCost && message.status !== 'processing' && (
-              <span className={`inline-flex items-center gap-1 text-[11px] ${
-                dark ? 'text-slate-600' : 'text-gray-400'
-              }`}>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {formatCostLabel(msgCost)} used
-                {msgCost.live && (
-                  <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live price from fal.ai" />
-                )}
-              </span>
-            )}
+            {/* Credit cost badge — real billed amount if available, otherwise estimate for image/video */}
+            {msgCost && message.status !== 'processing' && (msgCost.real || message.media_type === 'image' || message.media_type === 'video') && (() => {
+              const label = formatCostLabel(msgCost);
+              if (!label) return null;
+              return (
+                <span className={`inline-flex items-center gap-1 text-[11px] ${
+                  dark ? 'text-slate-600' : 'text-gray-400'
+                }`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {label} {msgCost.real ? 'billed' : 'est.'}
+                  {msgCost.live && !msgCost.real && (
+                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live price from fal.ai" />
+                  )}
+                  {msgCost.real && (
+                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} title="Actual billed amount from fal.ai" />
+                  )}
+                </span>
+              );
+            })()}
           </div>
         )}
       </div>

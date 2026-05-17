@@ -18,11 +18,9 @@ const sendMessage = async (req, res) => {
   }
 
   try {
-    // Get chat to know task_type
     const [chats] = await pool.execute('SELECT * FROM chats WHERE id = ?', [chatId]);
-    if (!chats.length) {
-      return res.status(404).json({ success: false, error: 'Chat not found' });
-    }
+    if (!chats.length) return res.status(404).json({ success: false, error: 'Chat not found' });
+
     const chat = chats[0];
     const activeModelId = model_id || chat.model_id;
 
@@ -33,7 +31,7 @@ const sendMessage = async (req, res) => {
       [userMsgId, chatId, 'user', content.trim(), chat.task_type, activeModelId]
     );
 
-    // Auto-title: set chat title from first user message
+    // Auto-title from first user message
     const [msgCount] = await pool.execute(
       'SELECT COUNT(*) as cnt FROM messages WHERE chat_id = ? AND role = "user"',
       [chatId]
@@ -44,54 +42,38 @@ const sendMessage = async (req, res) => {
       await pool.execute('UPDATE chats SET title = ? WHERE id = ?', [chatTitle, chatId]);
     }
 
-    // Update chat updated_at and model
     await pool.execute('UPDATE chats SET updated_at = NOW(), model_id = ? WHERE id = ?', [activeModelId, chatId]);
 
     const userMessage = {
-      id: userMsgId,
-      chat_id: chatId,
-      role: 'user',
-      content: content.trim(),
-      media_type: chat.task_type,
-      model_id: activeModelId,
-      created_at: new Date().toISOString(),
+      id: userMsgId, chat_id: chatId, role: 'user',
+      content: content.trim(), media_type: chat.task_type,
+      model_id: activeModelId, created_at: new Date().toISOString(),
     };
 
-    // === TEXT GENERATION ===
+    // ── TEXT ──────────────────────────────────────────────────────────────────
     if (chat.task_type === 'text') {
       try {
-        // Get conversation history — fixed SQL with correct parentheses
         const [history] = await pool.execute(
-          `SELECT role, content FROM messages
-           WHERE chat_id = ? AND id != ?
-           ORDER BY created_at ASC
-           LIMIT 20`,
+          `SELECT role, content FROM messages WHERE chat_id = ? AND id != ? ORDER BY created_at ASC LIMIT 20`,
           [chatId, userMsgId]
         );
 
-        const replyText = await generateText(activeModelId, content.trim(), history);
+        const { text: replyText, costUsd } = await generateText(activeModelId, content.trim(), history);
 
         const replyId = uuidv4();
         await pool.execute(
-          'INSERT INTO messages (id, chat_id, role, content, media_type, model_id) VALUES (?, ?, ?, ?, ?, ?)',
-          [replyId, chatId, 'assistant', replyText, 'text', activeModelId]
+          'INSERT INTO messages (id, chat_id, role, content, media_type, model_id, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [replyId, chatId, 'assistant', replyText, 'text', activeModelId, costUsd ?? null]
         );
 
-        const assistantMessage = {
-          id: replyId,
-          chat_id: chatId,
-          role: 'assistant',
-          content: replyText,
-          media_type: 'text',
-          model_id: activeModelId,
-          created_at: new Date().toISOString(),
-        };
-
         return res.json({
-          success: true,
-          userMessage,
-          assistantMessage,
-          chatTitle,
+          success: true, userMessage, chatTitle,
+          assistantMessage: {
+            id: replyId, chat_id: chatId, role: 'assistant',
+            content: replyText, media_type: 'text',
+            model_id: activeModelId, cost_usd: costUsd ?? null,
+            created_at: new Date().toISOString(),
+          },
         });
       } catch (err) {
         console.error('Text generation error:', err);
@@ -101,47 +83,32 @@ const sendMessage = async (req, res) => {
           'INSERT INTO messages (id, chat_id, role, content, media_type, model_id) VALUES (?, ?, ?, ?, ?, ?)',
           [errId, chatId, 'assistant', errText, 'text', activeModelId]
         );
-        return res.json({
-          success: false,
-          userMessage,
-          assistantMessage: {
-            id: errId,
-            role: 'assistant',
-            content: errText,
-            media_type: 'text',
-            created_at: new Date().toISOString(),
-          },
-          chatTitle,
+        return res.json({ success: false, userMessage, chatTitle,
+          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text', created_at: new Date().toISOString() },
         });
       }
     }
 
-    // === IMAGE GENERATION ===
+    // ── IMAGE ─────────────────────────────────────────────────────────────────
     if (chat.task_type === 'image') {
       try {
-        const imagePath = await generateImage(activeModelId, content.trim());
+        const { url: imagePath, costUsd } = await generateImage(activeModelId, content.trim());
 
         const replyId = uuidv4();
         await pool.execute(
-          'INSERT INTO messages (id, chat_id, role, content, media_url, media_type, model_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [replyId, chatId, 'assistant', null, imagePath, 'image', activeModelId, 'complete']
+          'INSERT INTO messages (id, chat_id, role, content, media_url, media_type, model_id, status, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [replyId, chatId, 'assistant', null, imagePath, 'image', activeModelId, 'complete', costUsd ?? null]
         );
 
         return res.json({
-          success: true,
-          userMessage,
+          success: true, userMessage, chatTitle,
           assistantMessage: {
-            id: replyId,
-            chat_id: chatId,
-            role: 'assistant',
-            content: null,
-            media_url: imagePath,
-            media_type: 'image',
-            model_id: activeModelId,
-            status: 'complete',
+            id: replyId, chat_id: chatId, role: 'assistant',
+            content: null, media_url: imagePath, media_type: 'image',
+            model_id: activeModelId, status: 'complete',
+            cost_usd: costUsd ?? null,
             created_at: new Date().toISOString(),
           },
-          chatTitle,
         });
       } catch (err) {
         console.error('Image generation error:', err);
@@ -151,22 +118,13 @@ const sendMessage = async (req, res) => {
           'INSERT INTO messages (id, chat_id, role, content, media_type, model_id) VALUES (?, ?, ?, ?, ?, ?)',
           [errId, chatId, 'assistant', errText, 'text', activeModelId]
         );
-        return res.json({
-          success: false,
-          userMessage,
-          assistantMessage: {
-            id: errId,
-            role: 'assistant',
-            content: errText,
-            media_type: 'text',
-            created_at: new Date().toISOString(),
-          },
-          chatTitle,
+        return res.json({ success: false, userMessage, chatTitle,
+          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text', created_at: new Date().toISOString() },
         });
       }
     }
 
-    // === VIDEO GENERATION ===
+    // ── VIDEO ─────────────────────────────────────────────────────────────────
     if (chat.task_type === 'video') {
       try {
         const jobId = await submitVideoJob(activeModelId, content.trim());
@@ -178,20 +136,13 @@ const sendMessage = async (req, res) => {
         );
 
         return res.json({
-          success: true,
-          userMessage,
+          success: true, userMessage, chatTitle,
           assistantMessage: {
-            id: replyId,
-            chat_id: chatId,
-            role: 'assistant',
-            content: null,
-            media_type: 'video',
-            model_id: activeModelId,
-            job_id: jobId,
-            status: 'processing',
+            id: replyId, chat_id: chatId, role: 'assistant',
+            content: null, media_type: 'video',
+            model_id: activeModelId, job_id: jobId, status: 'processing',
             created_at: new Date().toISOString(),
           },
-          chatTitle,
         });
       } catch (err) {
         console.error('Video submission error:', err);
@@ -201,17 +152,8 @@ const sendMessage = async (req, res) => {
           'INSERT INTO messages (id, chat_id, role, content, media_type, model_id) VALUES (?, ?, ?, ?, ?, ?)',
           [errId, chatId, 'assistant', errText, 'text', activeModelId]
         );
-        return res.json({
-          success: false,
-          userMessage,
-          assistantMessage: {
-            id: errId,
-            role: 'assistant',
-            content: errText,
-            media_type: 'text',
-            created_at: new Date().toISOString(),
-          },
-          chatTitle,
+        return res.json({ success: false, userMessage, chatTitle,
+          assistantMessage: { id: errId, role: 'assistant', content: errText, media_type: 'text', created_at: new Date().toISOString() },
         });
       }
     }
@@ -228,19 +170,13 @@ const pollJobStatus = async (req, res) => {
   const { messageId } = req.params;
 
   try {
-    const [messages] = await pool.execute(
-      'SELECT * FROM messages WHERE id = ?',
-      [messageId]
-    );
-
-    if (!messages.length) {
-      return res.status(404).json({ success: false, error: 'Message not found' });
-    }
+    const [messages] = await pool.execute('SELECT * FROM messages WHERE id = ?', [messageId]);
+    if (!messages.length) return res.status(404).json({ success: false, error: 'Message not found' });
 
     const message = messages[0];
 
     if (message.status === 'complete') {
-      return res.json({ success: true, status: 'complete', media_url: message.media_url });
+      return res.json({ success: true, status: 'complete', media_url: message.media_url, cost_usd: message.cost_usd ?? null });
     }
 
     if (message.status === 'error') {
@@ -255,10 +191,10 @@ const pollJobStatus = async (req, res) => {
 
     if (result.status === 'complete') {
       await pool.execute(
-        'UPDATE messages SET media_url = ?, status = "complete" WHERE id = ?',
-        [result.media_url, messageId]
+        'UPDATE messages SET media_url = ?, status = "complete", cost_usd = ? WHERE id = ?',
+        [result.media_url, result.costUsd ?? null, messageId]
       );
-      return res.json({ success: true, status: 'complete', media_url: result.media_url });
+      return res.json({ success: true, status: 'complete', media_url: result.media_url, cost_usd: result.costUsd ?? null });
     }
 
     if (result.status === 'error') {

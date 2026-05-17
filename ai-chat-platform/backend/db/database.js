@@ -27,6 +27,20 @@ async function initializeDatabase() {
   const connection = await pool.getConnection();
   try {
     console.log('✅ Database connected successfully');
+
+    // Auto-migrate: add cost_usd column if it doesn't exist yet
+    // Safe to run every startup — IF NOT EXISTS equivalent via IGNORE
+    try {
+      await connection.execute(
+        `ALTER TABLE messages ADD COLUMN cost_usd DECIMAL(10,6) DEFAULT NULL`
+      );
+      console.log('✅ DB migration: added cost_usd column to messages');
+    } catch (err) {
+      // Error 1060 = "Duplicate column name" — column already exists, all good
+      if (err.errno !== 1060) {
+        console.warn('⚠️  DB migration warning (cost_usd):', err.message);
+      }
+    }
   } finally {
     connection.release();
   }
