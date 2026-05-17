@@ -35,7 +35,7 @@ router.get('/admin/disk-usage', (req, res) => {
 });
 
 // Admin: live credit balance from fal.ai
-// GET https://api.fal.ai/v1/account/billing?expand=credits
+// Tries multiple known endpoint shapes since fal.ai has changed their billing API.
 router.get('/admin/credits', async (req, res) => {
   const FAL_KEY = process.env.FAL_KEY || '';
 
@@ -46,95 +46,107 @@ router.get('/admin/credits', async (req, res) => {
     });
   }
 
-  try {
-    const response = await fetch('https://api.fal.ai/v1/account/billing?expand=credits', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    });
+  // fal.ai has multiple billing endpoint paths — try them in order
+  const ENDPOINTS = [
+    'https://fal.ai/api/billing/credits',          // dashboard internal (most current)
+    'https://api.fal.ai/v1/account/balance',        // v1 balance
+    'https://api.fal.ai/v1/account/billing/credits',// v1 credits
+    'https://api.fal.ai/v1/account/billing?expand=credits', // old path
+  ];
 
-    const rawText = await response.text();
-    console.log('[credits] fal.ai status:', response.status, 'body:', rawText.slice(0, 300));
+  const headers = {
+    'Authorization': `Key ${FAL_KEY}`,
+    'Content-Type': 'application/json',
+  };
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        success: false,
-        error: `fal.ai returned ${response.status}`,
-        detail: rawText,
-      });
+  let lastStatus = null;
+  let lastBody = '';
+
+  for (const url of ENDPOINTS) {
+    try {
+      const response = await fetch(url, { method: 'GET', headers });
+      const rawText = await response.text();
+      console.log(`[credits] tried ${url} → status ${response.status} body: ${rawText.slice(0, 200)}`);
+
+      lastStatus = response.status;
+      lastBody = rawText;
+
+      if (!response.ok) continue; // try next endpoint
+
+      let data;
+      try { data = JSON.parse(rawText); }
+      catch { continue; }
+
+      // Normalise across all known response shapes
+      const balance =
+        data.credits?.current_balance ??
+        data.credits?.balance ??
+        data.current_balance ??
+        data.balance ??
+        data.amount ??
+        null;
+
+      const currency = data.credits?.currency ?? data.currency ?? 'USD';
+      const username = data.username ?? data.user?.username ?? data.email ?? null;
+
+      return res.json({ success: true, username, balance, currency });
+    } catch (fetchErr) {
+      console.warn(`[credits] fetch error for ${url}:`, fetchErr.message);
     }
-
-    let data;
-    try { data = JSON.parse(rawText); }
-    catch { return res.status(500).json({ success: false, error: 'Invalid JSON from fal.ai', detail: rawText }); }
-
-    // Handle multiple possible response shapes from fal.ai
-    const balance =
-      data.credits?.current_balance ??
-      data.credits?.balance ??
-      data.current_balance ??
-      data.balance ??
-      null;
-
-    const currency = data.credits?.currency ?? data.currency ?? 'USD';
-
-    return res.json({
-      success: true,
-      username: data.username ?? null,
-      balance,
-      currency,
-    });
-  } catch (err) {
-    console.error('[credits] fetch error:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
   }
+
+  // All endpoints failed — return the last status/body for debugging
+  console.error('[credits] all endpoints failed. last status:', lastStatus, 'body:', lastBody.slice(0, 300));
+  return res.status(502).json({
+    success: false,
+    error: `fal.ai credits API unreachable (last status: ${lastStatus ?? 'network error'})`,
+    detail: lastBody.slice(0, 300),
+  });
 });
 
-// Admin: live model pricing from fal.ai
-// GET https://api.fal.ai/v1/models/pricing?endpoint_id=...
+// Admin: live model pricing from fal.ai (with static fallback)
 router.get('/admin/model-pricing', async (req, res) => {
   const FAL_KEY = process.env.FAL_KEY || '';
 
+  // Static fallback pricing (always returned if API fails)
+  const STATIC_PRICING = {
+    'fal-ai/flux/schnell':                        { unit_price: 0.003,  unit: 'megapixel', currency: 'USD' },
+    'fal-ai/flux-pro':                            { unit_price: 0.04,   unit: 'megapixel', currency: 'USD' },
+    'fal-ai/flux-pro/v1.1-ultra':                 { unit_price: 0.06,   unit: 'image',     currency: 'USD' },
+    'fal-ai/imagen4/preview':                     { unit_price: 0.02,   unit: 'image',     currency: 'USD' },
+    'fal-ai/kling-video/v1.6/standard/text-to-video': { unit_price: 0.056, unit: 'second', currency: 'USD' },
+    'fal-ai/kling-video/v1.6/pro/text-to-video':  { unit_price: 0.098,  unit: 'second',   currency: 'USD' },
+    'fal-ai/luma-dream-machine':                  { unit_price: 0.50,   unit: 'video',     currency: 'USD' },
+    'fal-ai/veo3/fast':                           { unit_price: 0.25,   unit: 'second',    currency: 'USD' },
+  };
+
   if (!FAL_KEY) {
-    return res.status(500).json({ success: false, error: 'FAL_KEY not set on Render' });
+    return res.json({ success: true, pricing: STATIC_PRICING, source: 'static' });
   }
 
-  const modelIds = [
-    'fal-ai/flux/schnell',
-    'fal-ai/flux-pro',
-    'fal-ai/flux-pro/v1.1-ultra',
-    'fal-ai/imagen4/preview',
-    'fal-ai/kling-video/v1.6/standard/text-to-video',
-    'fal-ai/kling-video/v1.6/pro/text-to-video',
-    'fal-ai/luma-dream-machine',
-    'fal-ai/veo3/fast',
-  ];
+  const modelIds = Object.keys(STATIC_PRICING);
 
   try {
     const params = modelIds.map(id => `endpoint_id=${encodeURIComponent(id)}`).join('&');
     const response = await fetch(`https://api.fal.ai/v1/models/pricing?${params}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Key ${FAL_KEY}`, 'Content-Type': 'application/json' },
     });
 
     const rawText = await response.text();
     console.log('[model-pricing] fal.ai status:', response.status, 'body:', rawText.slice(0, 300));
 
     if (!response.ok) {
-      return res.status(response.status).json({ success: false, error: rawText });
+      // Return static fallback instead of error
+      return res.json({ success: true, pricing: STATIC_PRICING, source: 'static' });
     }
 
     let data;
     try { data = JSON.parse(rawText); }
-    catch { return res.status(500).json({ success: false, error: 'Invalid JSON from fal.ai' }); }
+    catch { return res.json({ success: true, pricing: STATIC_PRICING, source: 'static' }); }
 
     const priceList = data.prices || data.data || [];
-    const pricing = {};
+    const pricing = { ...STATIC_PRICING }; // start with static, overlay live
     for (const p of priceList) {
       pricing[p.endpoint_id] = {
         unit_price: p.unit_price,
@@ -143,10 +155,10 @@ router.get('/admin/model-pricing', async (req, res) => {
       };
     }
 
-    return res.json({ success: true, pricing });
+    return res.json({ success: true, pricing, source: 'live' });
   } catch (err) {
     console.error('[model-pricing] fetch error:', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.json({ success: true, pricing: STATIC_PRICING, source: 'static' });
   }
 });
 

@@ -12,7 +12,10 @@ export default function CreditsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/credits');
+      // Use VITE_API_URL so this works on Vercel (frontend) hitting the Render backend.
+      // Falls back to relative /api for local dev (Vite proxy handles it).
+      const base = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${base}/api/admin/credits`);
       const data = await res.json();
       if (data.success) {
         setCredits(data);
