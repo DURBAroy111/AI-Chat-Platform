@@ -34,113 +34,143 @@ router.get('/admin/disk-usage', (req, res) => {
   res.json({ success: true, ...usage });
 });
 
-// Admin: credits & token usage from fal.ai
+// Admin: live credit balance from fal.ai
+// GET https://api.fal.ai/v1/account/billing?expand=credits
 router.get('/admin/credits', async (req, res) => {
+  const FAL_KEY = process.env.FAL_KEY || '';
+
+  if (!FAL_KEY) {
+    return res.status(500).json({
+      success: false,
+      error: 'FAL_KEY is not set in Render environment variables',
+    });
+  }
+
   try {
-    const FAL_KEY = process.env.FAL_KEY || '';
-    // Official fal.ai Platform API: GET /v1/account/billing?expand=credits
     const response = await fetch('https://api.fal.ai/v1/account/billing?expand=credits', {
+      method: 'GET',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       },
     });
 
+    const rawText = await response.text();
+    console.log('[credits] fal.ai status:', response.status, 'body:', rawText.slice(0, 300));
+
     if (!response.ok) {
-      const errText = await response.text();
-      console.error('fal.ai billing API error:', response.status, errText);
       return res.status(response.status).json({
         success: false,
-        error: `fal.ai billing API returned ${response.status}`,
-        detail: errText,
+        error: `fal.ai returned ${response.status}`,
+        detail: rawText,
       });
     }
 
-    const data = await response.json();
-    // Response shape: { username, credits: { current_balance, currency } }
-    const balance = data.credits?.current_balance ?? null;
-    const currency = data.credits?.currency ?? 'USD';
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch { return res.status(500).json({ success: false, error: 'Invalid JSON from fal.ai', detail: rawText }); }
+
+    // Handle multiple possible response shapes from fal.ai
+    const balance =
+      data.credits?.current_balance ??
+      data.credits?.balance ??
+      data.current_balance ??
+      data.balance ??
+      null;
+
+    const currency = data.credits?.currency ?? data.currency ?? 'USD';
 
     return res.json({
       success: true,
       username: data.username ?? null,
       balance,
       currency,
-      raw: data,
     });
   } catch (err) {
-    console.error('Credits fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[credits] fetch error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Admin: fetch real unit pricing from fal.ai for models used in this app
+// Admin: live model pricing from fal.ai
+// GET https://api.fal.ai/v1/models/pricing?endpoint_id=...
 router.get('/admin/model-pricing', async (req, res) => {
+  const FAL_KEY = process.env.FAL_KEY || '';
+
+  if (!FAL_KEY) {
+    return res.status(500).json({ success: false, error: 'FAL_KEY not set on Render' });
+  }
+
+  const modelIds = [
+    'fal-ai/flux/schnell',
+    'fal-ai/flux-pro',
+    'fal-ai/flux-pro/v1.1-ultra',
+    'fal-ai/imagen4/preview',
+    'fal-ai/kling-video/v1.6/standard/text-to-video',
+    'fal-ai/kling-video/v1.6/pro/text-to-video',
+    'fal-ai/luma-dream-machine',
+    'fal-ai/veo3/fast',
+  ];
+
   try {
-    const FAL_KEY = process.env.FAL_KEY || '';
-    const modelIds = [
-      'fal-ai/flux/schnell',
-      'fal-ai/flux-pro',
-      'fal-ai/flux-pro/v1.1-ultra',
-      'fal-ai/imagen4/preview',
-      'fal-ai/kling-video/v1.6/standard/text-to-video',
-      'fal-ai/kling-video/v1.6/pro/text-to-video',
-      'fal-ai/luma-dream-machine',
-      'fal-ai/veo3/fast',
-    ];
     const params = modelIds.map(id => `endpoint_id=${encodeURIComponent(id)}`).join('&');
     const response = await fetch(`https://api.fal.ai/v1/models/pricing?${params}`, {
+      method: 'GET',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       },
     });
 
+    const rawText = await response.text();
+    console.log('[model-pricing] fal.ai status:', response.status, 'body:', rawText.slice(0, 300));
+
     if (!response.ok) {
-      const errText = await response.text();
-      return res.status(response.status).json({ success: false, error: errText });
+      return res.status(response.status).json({ success: false, error: rawText });
     }
 
-    const data = await response.json();
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch { return res.status(500).json({ success: false, error: 'Invalid JSON from fal.ai' }); }
+
+    const priceList = data.prices || data.data || [];
     const pricing = {};
-    for (const p of (data.prices || [])) {
+    for (const p of priceList) {
       pricing[p.endpoint_id] = {
         unit_price: p.unit_price,
         unit: p.unit,
         currency: p.currency || 'USD',
       };
     }
+
     return res.json({ success: true, pricing });
   } catch (err) {
-    console.error('Model pricing fetch error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[model-pricing] fetch error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Models config (returns all available models)
+// Models config
 router.get('/models', (req, res) => {
-  res.json({
-    success: true,
-    models: {
-      text: [
-        { id: 'fal-ai/claude-haiku', name: 'Claude Haiku', description: 'Fast & efficient for Q&A, summaries', speed: 'Fast', cost: 'Low' },
-        { id: 'fal-ai/claude-sonnet', name: 'Claude Sonnet', description: 'Best for long writing & analysis', speed: 'Medium', cost: 'Medium' },
-        { id: 'fal-ai/gemini-flash', name: 'Gemini 2.0 Flash', description: 'Multimodal, fast reasoning', speed: 'Fast', cost: 'Low' },
-      ],
-      image: [
-        { id: 'fal-ai/flux/schnell', name: 'FLUX Schnell', description: 'Fast generation, great for previews', speed: 'Fast', cost: '$0.003/MP' },
-        { id: 'fal-ai/flux-pro', name: 'FLUX.1 Pro', description: 'High quality, photorealistic', speed: 'Medium', cost: '$0.04/MP' },
-        { id: 'fal-ai/flux-pro/v1.1-ultra', name: 'FLUX Max', description: 'Highest FLUX quality', speed: 'Slow', cost: '$0.06/img' },
-        { id: 'fal-ai/imagen4/preview', name: 'Imagen 4 Fast', description: "Google's quality model, fast", speed: 'Fast', cost: '$0.02/img' },
-      ],
-      video: [
-        { id: 'fal-ai/kling-video/v1.6/standard', name: 'Kling Standard', description: 'Good budget 720p video', speed: 'Medium', cost: '$0.056/s' },
-        { id: 'fal-ai/kling-video/v1.6/pro', name: 'Kling Pro', description: 'Premium smooth motion', speed: 'Slow', cost: '$0.098/s' },
-        { id: 'fal-ai/luma-dream-machine', name: 'Luma Dream', description: 'Cinematic, great for creative', speed: 'Slow', cost: '$0.50/vid' },
-        { id: 'fal-ai/veo3/fast', name: 'Veo 3 Fast', description: "Google's video model, fast variant", speed: 'Medium', cost: '$0.25/s' },
-      ],
-    },
-  });
+  res.json({ success: true, models: {
+    text: [
+      { id: 'fal-ai/any-llm',         name: 'Claude Haiku',  description: 'Fast & efficient for Q&A, summaries', speed: 'Fast',   cost: 'Low'    },
+      { id: 'fal-ai/any-llm::sonnet', name: 'Claude Sonnet', description: 'Best for long writing & analysis',    speed: 'Medium', cost: 'Medium' },
+      { id: 'fal-ai/any-llm::gemini', name: 'Gemini Flash',  description: 'Multimodal, fast reasoning',          speed: 'Fast',   cost: 'Low'    },
+    ],
+    image: [
+      { id: 'fal-ai/flux/schnell',        name: 'FLUX Schnell', description: 'Fast generation, great for previews', speed: 'Fast',   cost: '$0.003/MP' },
+      { id: 'fal-ai/flux-pro',            name: 'FLUX Pro',     description: 'High quality, photorealistic',        speed: 'Medium', cost: '$0.04/MP'  },
+      { id: 'fal-ai/flux-pro/v1.1-ultra', name: 'FLUX Max',     description: 'Highest FLUX quality',                speed: 'Slow',   cost: '$0.06/img' },
+      { id: 'fal-ai/imagen4/preview',     name: 'Imagen 4',     description: "Google's quality model",              speed: 'Fast',   cost: '$0.02/img' },
+    ],
+    video: [
+      { id: 'fal-ai/kling-video/v1.6/standard', name: 'Kling Standard', description: 'Good budget 720p video', speed: 'Medium', cost: '$0.056/s'  },
+      { id: 'fal-ai/kling-video/v1.6/pro',      name: 'Kling Pro',      description: 'Premium smooth motion',  speed: 'Slow',   cost: '$0.098/s'  },
+      { id: 'fal-ai/luma-dream-machine',         name: 'Luma Dream',     description: 'Cinematic video',        speed: 'Slow',   cost: '$0.50/vid' },
+      { id: 'fal-ai/veo3/fast',                  name: 'Veo 3 Fast',     description: "Google's video model",   speed: 'Medium', cost: '$0.25/s'   },
+    ],
+  }});
 });
 
 module.exports = router;
