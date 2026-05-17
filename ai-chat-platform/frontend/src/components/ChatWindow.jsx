@@ -92,6 +92,11 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
         title: data.chatTitle || trimmed.substring(0, 60),
         model_id: modelId,
       });
+
+      // Refresh credit balance after every generation (for image/text completions)
+      if (data.assistantMessage?.status !== 'processing') {
+        window.dispatchEvent(new Event('fal:generation-complete'));
+      }
     } catch (err) {
       // Show error as system message (replace temp user msg)
       setMessages(prev => {
@@ -126,6 +131,9 @@ export default function ChatWindow({ chat, onChatUpdated, onToggleSidebar, sideb
     setMessages(prev => prev.map(m =>
       m.id === messageId ? { ...m, status, media_url: mediaUrl } : m
     ));
+    if (status === 'complete') {
+      window.dispatchEvent(new Event('fal:generation-complete'));
+    }
   };
 
   // === EMPTY STATE (no chat selected) ===

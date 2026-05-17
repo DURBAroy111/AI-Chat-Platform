@@ -128,16 +128,16 @@ router.get('/models', (req, res) => {
         { id: 'fal-ai/gemini-flash', name: 'Gemini 2.0 Flash', description: 'Multimodal, fast reasoning', speed: 'Fast', cost: 'Low' },
       ],
       image: [
-        { id: 'fal-ai/flux/schnell', name: 'FLUX Schnell', description: 'Fast generation, great for previews', speed: 'Fast', cost: '$0.003/img' },
-        { id: 'fal-ai/flux-pro', name: 'FLUX.1 Pro', description: 'High quality, photorealistic', speed: 'Medium', cost: '$0.04/img' },
-        { id: 'fal-ai/flux-pro/v1.1-ultra', name: 'FLUX Max', description: 'Highest FLUX quality', speed: 'Slow', cost: '$0.07/img' },
+        { id: 'fal-ai/flux/schnell', name: 'FLUX Schnell', description: 'Fast generation, great for previews', speed: 'Fast', cost: '$0.003/MP' },
+        { id: 'fal-ai/flux-pro', name: 'FLUX.1 Pro', description: 'High quality, photorealistic', speed: 'Medium', cost: '$0.04/MP' },
+        { id: 'fal-ai/flux-pro/v1.1-ultra', name: 'FLUX Max', description: 'Highest FLUX quality', speed: 'Slow', cost: '$0.06/img' },
         { id: 'fal-ai/imagen4/preview', name: 'Imagen 4 Fast', description: "Google's quality model, fast", speed: 'Fast', cost: '$0.02/img' },
       ],
       video: [
-        { id: 'fal-ai/kling-video/v1.6/standard', name: 'Kling Standard', description: 'Good budget 720p video', speed: 'Medium', cost: '$0.22/10s' },
-        { id: 'fal-ai/kling-video/v1.6/pro', name: 'Kling Pro', description: 'Premium smooth motion', speed: 'Slow', cost: '$0.52/10s' },
-        { id: 'fal-ai/luma-dream-machine', name: 'Luma Dream', description: 'Cinematic, great for creative', speed: 'Slow', cost: '$0.50/10s' },
-        { id: 'fal-ai/veo3/fast', name: 'Veo 3 Fast', description: "Google's video model, fast variant", speed: 'Medium', cost: '$0.64/10s' },
+        { id: 'fal-ai/kling-video/v1.6/standard', name: 'Kling Standard', description: 'Good budget 720p video', speed: 'Medium', cost: '$0.056/s' },
+        { id: 'fal-ai/kling-video/v1.6/pro', name: 'Kling Pro', description: 'Premium smooth motion', speed: 'Slow', cost: '$0.098/s' },
+        { id: 'fal-ai/luma-dream-machine', name: 'Luma Dream', description: 'Cinematic, great for creative', speed: 'Slow', cost: '$0.50/vid' },
+        { id: 'fal-ai/veo3/fast', name: 'Veo 3 Fast', description: "Google's video model, fast variant", speed: 'Medium', cost: '$0.25/s' },
       ],
     },
   });

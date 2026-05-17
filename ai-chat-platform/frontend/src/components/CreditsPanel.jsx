@@ -26,7 +26,13 @@ export default function CreditsPanel() {
     }
   };
 
-  useEffect(() => { fetchCredits(); }, []);
+  useEffect(() => {
+    fetchCredits();
+    // Refresh credits when a generation completes
+    const handler = () => fetchCredits();
+    window.addEventListener('fal:generation-complete', handler);
+    return () => window.removeEventListener('fal:generation-complete', handler);
+  }, []);
 
   const dark = theme === 'dark';
 

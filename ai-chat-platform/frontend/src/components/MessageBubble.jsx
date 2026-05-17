@@ -15,18 +15,26 @@ function TypingIndicator() {
   );
 }
 
-// Static fallback costs (used while real pricing loads)
+// Static fallback costs — sourced from official fal.ai model pages (used while live pricing loads)
+// Image models: billed per image (at ~1MP / standard resolution)
+// Video models: billed per second of output video
 const IMAGE_COSTS_FALLBACK = {
-  'fal-ai/flux/schnell':        { price: 0.003, unit: 'image' },
-  'fal-ai/flux-pro':            { price: 0.040, unit: 'image' },
-  'fal-ai/flux-pro/v1.1-ultra': { price: 0.070, unit: 'image' },
-  'fal-ai/imagen4/preview':     { price: 0.020, unit: 'image' },
+  'fal-ai/flux/schnell':        { price: 0.003, unit: 'image' }, // $0.003/megapixel · fal.ai/models/fal-ai/flux/schnell
+  'fal-ai/flux-pro':            { price: 0.040, unit: 'image' }, // $0.04/megapixel  · fal.ai/models/fal-ai/flux-pro/v1.1
+  'fal-ai/flux-pro/v1.1-ultra': { price: 0.060, unit: 'image' }, // $0.06/image      · fal.ai/models/fal-ai/flux-pro/v1.1-ultra
+  'fal-ai/imagen4/preview':     { price: 0.020, unit: 'image' }, // $0.02/image      · fal.ai/models/fal-ai/imagen4/preview
 };
+// Video: price per second, duration used for 5-second clip (app default)
+const VIDEO_DEFAULT_DURATION_S = 5;
 const VIDEO_COSTS_FALLBACK = {
-  'fal-ai/kling-video/v1.6/standard': { price: 0.22, unit: 'video' },
-  'fal-ai/kling-video/v1.6/pro':      { price: 0.52, unit: 'video' },
-  'fal-ai/luma-dream-machine':         { price: 0.50, unit: 'video' },
-  'fal-ai/veo3/fast':                  { price: 0.64, unit: 'video' },
+  // Kling v1.6 Standard: $0.056/second → 5s ≈ $0.28
+  'fal-ai/kling-video/v1.6/standard': { price: 0.056, unit: 'second', duration: VIDEO_DEFAULT_DURATION_S },
+  // Kling v1.6 Pro: $0.098/second → 5s ≈ $0.49
+  'fal-ai/kling-video/v1.6/pro':      { price: 0.098, unit: 'second', duration: VIDEO_DEFAULT_DURATION_S },
+  // Luma Dream Machine: $0.50 per video (flat rate)
+  'fal-ai/luma-dream-machine':         { price: 0.50,  unit: 'video' },
+  // Veo 3 Fast: $0.25/second (with audio) → 8s clip ≈ $2.00; $0.10/s without audio
+  'fal-ai/veo3/fast':                  { price: 0.25,  unit: 'second', duration: 8 },
 };
 
 function useLiveCost(modelId) {
@@ -39,7 +47,13 @@ function useLiveCost(modelId) {
     getModelPricing().then(pricing => {
       const entry = pricing[endpointId];
       if (entry) {
-        setCost({ price: entry.unit_price, unit: entry.unit, live: true });
+        const fb = VIDEO_COSTS_FALLBACK[modelId];
+        setCost({
+          price: entry.unit_price,
+          unit: entry.unit,
+          duration: fb?.duration ?? null, // carry known duration for per-second models
+          live: true,
+        });
       } else {
         // Fall back to static table
         const fb = IMAGE_COSTS_FALLBACK[modelId] || VIDEO_COSTS_FALLBACK[modelId];
@@ -50,6 +64,25 @@ function useLiveCost(modelId) {
   }, [modelId]);
 
   return { cost, loading };
+}
+
+// Compute the dollar amount for a generation given cost info
+function computeCostAmount(cost) {
+  if (!cost) return null;
+  if (cost.unit === 'image') return cost.price;
+  if (cost.unit === 'video') return cost.price;
+  if (cost.unit === 'second' && cost.duration) return cost.price * cost.duration;
+  return cost.price;
+}
+
+function formatCostLabel(cost) {
+  if (!cost) return null;
+  const amount = computeCostAmount(cost);
+  if (amount == null) return null;
+  if (cost.unit === 'second' && cost.duration) {
+    return `~$${amount.toFixed(3)} (${cost.duration}s @ $${cost.price}/s)`;
+  }
+  return `$${amount.toFixed(3)}`;
 }
 
 function CreditBadge({ label, dark, live }) {
@@ -78,7 +111,7 @@ function ImageMessage({ message }) {
   const dark = theme === 'dark';
   const { cost, loading: costLoading } = useLiveCost(message.model_id);
 
-  const costLabel = cost ? `${formatCost(cost.price, cost.unit)} used` : null;
+  const costLabel = cost ? formatCostLabel(cost) : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -115,7 +148,7 @@ function ImageMessage({ message }) {
                 </svg>
                 Download
               </a>
-              {costLabel && loaded && <CreditBadge label={costLabel} dark={dark} live={cost?.live} />}
+              {costLabel && loaded && <CreditBadge label={`${costLabel} used`} dark={dark} live={cost?.live} />}
             </div>
           </div>
         )}
@@ -135,7 +168,7 @@ function VideoMessage({ message, onStatusUpdate }) {
   const { theme } = useContext(ThemeContext);
   const dark = theme === 'dark';
   const { cost } = useLiveCost(message.model_id);
-  const costLabel = cost ? `${formatCost(cost.price, cost.unit)} used` : null;
+  const costLabel = cost ? formatCostLabel(cost) : null;
 
   useEffect(() => {
     if (status === 'processing') {
@@ -311,6 +344,9 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
   const inputTok = message.input_tokens || null;
   const outputTok = message.output_tokens || null;
 
+  // Credit cost hook (used for all media types)
+  const { cost: msgCost } = useLiveCost(!isUser ? message.model_id : null);
+
   return (
     <div className={`flex items-start gap-3 px-4 py-2 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
@@ -355,15 +391,16 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
           )}
         </div>
 
-        {/* Footer: model name + token usage */}
+        {/* Footer: model name + credit/token usage — shown under every AI message */}
         {!isUser && (
-          <div className={`flex items-center gap-2 flex-wrap px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
+          <div className={`flex items-center gap-2 flex-wrap px-1`}>
             {message.model_id && (
               <p className={`text-xs ${dark ? 'text-slate-600' : 'text-gray-400'}`}>
                 {getModelName(message.model_id)}
               </p>
             )}
-            {/* Token badge for text messages */}
+
+            {/* Text messages: show token info if available */}
             {message.media_type === 'text' && tokens != null && (
               <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
                 dark
@@ -381,9 +418,25 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
                 ↑{inputTok.toLocaleString()} ↓{outputTok.toLocaleString()}
               </span>
             )}
+
+            {/* Credit cost line — shown for image + video messages (text messages billed differently) */}
+            {(message.media_type === 'image' || message.media_type === 'video') && msgCost && message.status !== 'processing' && (
+              <span className={`inline-flex items-center gap-1 text-[11px] ${
+                dark ? 'text-slate-600' : 'text-gray-400'
+              }`}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {formatCostLabel(msgCost)} used
+                {msgCost.live && (
+                  <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live price from fal.ai" />
+                )}
+              </span>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
+
