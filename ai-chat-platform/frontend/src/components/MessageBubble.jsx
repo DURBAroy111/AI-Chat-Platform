@@ -99,7 +99,7 @@ function CreditBadge({ label, dark, live }) {
       </svg>
       {label}
       {live && (
-        <span className={`w-1.5 h-1.5 rounded-full ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live pricing from fal.ai" />
+        <span className={`w-1.5 h-1.5 rounded-full ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live pricing from SOLO AI" />
       )}
     </span>
   );
@@ -442,10 +442,10 @@ export default function MessageBubble({ message, isLoading, onStatusUpdate }) {
                   </svg>
                   {label} {msgCost.real ? 'billed' : 'est.'}
                   {msgCost.live && !msgCost.real && (
-                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live price from fal.ai" />
+                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Live price from SOLO AI" />
                   )}
                   {msgCost.real && (
-                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} title="Actual billed amount from fal.ai" />
+                    <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} title="Actual billed amount from SOLO AI" />
                   )}
                 </span>
               );

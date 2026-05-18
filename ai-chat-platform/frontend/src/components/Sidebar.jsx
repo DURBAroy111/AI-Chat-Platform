@@ -49,7 +49,7 @@ export default function Sidebar({ chats, activeChatId, onSelectChat, onDeleteCha
             }`}>AI Chat Platform</h1>
             <p className={`text-xs ${
               theme === 'dark' ? 'text-slate-500' : 'text-gray-500'
-            }`}>Powered by fal.ai</p>
+            }`}>Powered by SOLO AI</p>
           </div>
         </div>
 
